@@ -1,0 +1,10 @@
+http:
+  middlewares:
+    strip-api:
+      stripPrefix:
+        prefixes:
+          - /api
+
+entryPoints:
+  web:
+    address: :80
