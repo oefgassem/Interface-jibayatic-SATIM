@@ -14,19 +14,22 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    # volumes:
+    #   - //./pipe/docker_engine://./pipe/docker_engine
+    #   - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
     networks:
       - web
 
   frontend:
     build: ./frontend
-    # ports:
-    # - "8081:80"
+    ports:
+    - "8081:80"
     labels:
-    - "traefik.enable=true"
-    - "traefik.http.routers.front.rule=Host(`localhost`) && PathPrefix(`/`)"
-    - "traefik.http.routers.front.entrypoints=web"
-    - "traefik.http.routers.front.priority=1"
-    - "traefik.http.services.front.loadbalancer.server.port=80"
+      - "traefik.enable=true"
+      - "traefik.http.routers.front.rule=Host(`localhost`) && PathPrefix(`/`)"
+      - "traefik.http.routers.front.entrypoints=web"
+      - "traefik.http.routers.front.priority=1"
+      - "traefik.http.services.front.loadbalancer.server.port=80"
     depends_on:
       - middleware
     networks:
@@ -34,6 +37,8 @@ services:
 
   middleware:
     build: ./middleware
+    ports:
+      - "3000:3000"
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -84,13 +89,28 @@ services:
     labels:
       - "traefik.enable=false"
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     networks:
       - web
     depends_on:
       - loki
+
+  satim-worker:
+    build: ./middleware
+    command: ["node", "worker-satim.js"]
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SATIM_USERNAME=SAT2511200956
+      - SATIM_PASSWORD=satim120
+      - SATIM_REGISTER_URL=https://test2.satim.dz/payment/rest/register.do
+      - SATIM_ACK_URL=https://test2.satim.dz/payment/rest/public/acknowledgeTransaction.do
+      - FRONTEND_URL=http://localhost:8081
+      # - SAP_PUSH_URL=http://... (optionnel)
+    depends_on:
+      - redis
 
 networks:
   web:
