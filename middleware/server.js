@@ -11,10 +11,11 @@ const cors = require('cors');
 
 // EXPRESS SETUP
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json());
 app.use(morgan('combined'));
 
-app.use(cors({ origin: 'http://localhost:8081' }));
+app.use(cors({ origin: ['http://frontend.docker.localhost', 'http://localhost'] }));
 
 // REDIS
 const redisOpts = {
@@ -99,7 +100,7 @@ app.post('/api/satim/register', async (req, res) => {
 });
 
 // ----------- SATIM RETURN CALLBACK -----------
-app.get('/satim/return', async (req, res) => {
+app.get('/api/satim/return', async (req, res) => {
   const orderId = req.query.orderId || req.query.mdOrder;
   if (!orderId) return res.status(400).send('orderId missing');
 

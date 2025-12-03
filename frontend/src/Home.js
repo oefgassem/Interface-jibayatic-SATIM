@@ -9,14 +9,14 @@ export default function Home() {
     try {
       const orderNumber = `ORDER-${Date.now()}`;
 
-      const resp = await fetch('http://localhost:3000/api/satim/register', {
+      const resp = await fetch('/api/satim/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderNumber,
           amount: 50000,
-          returnUrl: 'http://localhost:3000/satim/return',
-          failUrl: 'http://localhost:3000/satim/return'
+          returnUrl: 'http://localhost/api/satim/return',
+          failUrl: 'http://localhost/api/satim/return'
         })
       });
 
