@@ -1,0 +1,5 @@
+{
+  "name": "SATIM-SAP Middleware",
+  "description": "A comprehensive dashboard and simulation environment for the SATIM to SAP S/4HANA payment integration middleware. Includes transaction monitoring, queue management, and automated retry logic simulation.",
+  "requestFramePermissions": []
+}
