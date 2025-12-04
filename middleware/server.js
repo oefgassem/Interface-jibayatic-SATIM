@@ -5,7 +5,8 @@ const morgan = require('morgan');
 const Redis = require('ioredis');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const { Queue } = require('bullmq');
+const { Queue, Worker } = require('bullmq'); // Added Worker, though not directly used in server.js, useful for worker-satim.js
+const { Sequelize, DataTypes } = require('sequelize'); // Import Sequelize and DataTypes
 const cors = require('cors');
 
 
@@ -24,6 +25,62 @@ const redisOpts = {
 };
 const redis = new Redis(redisOpts);
 
+// POSTGRESQL SETUP
+const sequelize = new Sequelize(
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASSWORD,
+  {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    dialect: 'postgres',
+    logging: false, // Set to true to see SQL queries in console, useful for debugging
+  }
+);
+
+// Define Payment Model
+const Payment = sequelize.define('Payment', {
+  orderId: { type: DataTypes.STRING, primaryKey: true, allowNull: false, unique: true },
+  orderNumber: { type: DataTypes.STRING, allowNull: false }, // The original order number from the frontend
+  amount: { type: DataTypes.INTEGER, allowNull: false }, // Store in smallest currency unit (e.g., cents)
+  currency: { type: DataTypes.STRING(3), allowNull: false }, // e.g., '012' for DZD
+  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' }, // e.g., 'registered', 'pending', 'success', 'failed', 'refunded'
+  retries: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  satimResponse: { type: DataTypes.JSONB, allowNull: true }, // Store the full initial SATIM registration response
+  actions: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }, // Array of action objects { timestamp, type, details }
+}, {
+  tableName: 'payments', // Explicitly set table name
+  timestamps: true, // Adds createdAt and updatedAt fields automatically
+});
+
+// This utility function will now interact with the database
+// It's designed to update a payment record and append an action to its history
+// The worker-satim.js will also need a similar function or direct model access.
+async function updatePaymentRecord(orderId, updates, actionType, actionDetails = {}) {
+  // This function will be used by the worker-satim.js to update payment status
+  // For server.js, we primarily use Payment.create and Payment.findByPk
+  // However, it's good to have a consistent update mechanism.
+  try {
+    const payment = await Payment.findByPk(orderId);
+    if (!payment) {
+      console.warn(`Payment with orderId ${orderId} not found for update.`);
+      return null;
+    }
+
+    const newActions = [...payment.actions, {
+      timestamp: new Date().toISOString(),
+      type: actionType,
+      details: actionDetails,
+    }];
+
+    await payment.update({ ...updates, actions: newActions });
+    return payment;
+  } catch (error) {
+    console.error(`Error updating payment record for orderId ${orderId}:`, error);
+    throw error; // Re-throw to be handled by caller
+  }
+}
+
 // QUEUE (BullMQ)
 const ackQueue = new Queue('satim-ack', { connection: redisOpts });
 
@@ -33,11 +90,6 @@ const SATIM_ACK_URL = process.env.SATIM_ACK_URL || 'https://test2.satim.dz/payme
 const SATIM_USERNAME = process.env.SATIM_USERNAME || 'SAT2511200956';
 const SATIM_PASSWORD = process.env.SATIM_PASSWORD || 'satim120';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8081';
-
-// UTILS
-async function setPaymentStatus(orderId, payload) {
-  await redis.set(`payment:${orderId}`, JSON.stringify(payload), 'EX', 86400);
-}
 
 // ----------- TEST ENDPOINT (OLD PAY) -----------
 app.post('/api/pay', async (req, res) => {
@@ -90,7 +142,21 @@ app.post('/api/satim/register', async (req, res) => {
     if (data.errorCode !== 0)
       return res.status(500).json({ error: 'SATIM register failed', data });
 
-    await setPaymentStatus(data.orderId, { status: 'registered', orderNumber, amount, satimResponse: data });
+    // Save initial payment record to PostgreSQL
+    await Payment.create({
+      orderId: data.orderId,
+      orderNumber: orderNumber,
+      amount: amount,
+      currency: currency,
+      status: 'registered', // Initial status
+      retries: 0,
+      satimResponse: data, // Store the full SATIM response for reference
+      actions: [{ // Record the initial action
+        timestamp: new Date().toISOString(),
+        type: 'registered',
+        details: { satimResponse: data }
+      }]
+    });
 
     return res.json({ orderId: data.orderId, formUrl: data.formUrl });
   } catch (err) {
@@ -115,19 +181,43 @@ app.get('/api/satim/return', async (req, res) => {
   `);
 });
 
-// ----------- PAYMENT STATUS ----------- 
+// ----------- PAYMENT STATUS (from DB) -----------
 app.get('/api/payment-status', async (req, res) => {
   const orderId = req.query.orderId;
   if (!orderId) return res.status(400).json({ error: 'orderId required' });
 
-  const raw = await redis.get(`payment:${orderId}`);
-  if (!raw) return res.json({ status: 'unknown' });
+  try {
+    // Fetch payment record from PostgreSQL
+    const payment = await Payment.findByPk(orderId, {
+      // Select specific attributes to return, excluding potentially sensitive full satimResponse
+      attributes: ['orderId', 'orderNumber', 'amount', 'currency', 'status', 'retries', 'createdAt', 'updatedAt', 'actions']
+    });
 
-  return res.json(JSON.parse(raw));
+    if (!payment) {
+      return res.status(404).json({ status: 'not_found', message: 'Payment not found' });
+    }
+    return res.json(payment);
+  } catch (error) {
+    console.error(`Error fetching payment status for orderId ${orderId}:`, error);
+    return res.status(500).json({ error: 'Failed to retrieve payment status' });
+  }
 });
 
 // HEALTH
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
 // START SERVER
-app.listen(3000, () => console.log('SATIM middleware running on port 3000'));
+// Initialize database connection and sync models before starting the Express server
+sequelize.authenticate()
+  .then(() => {
+    console.log('PostgreSQL connection has been established successfully.');
+    return sequelize.sync(); // This will create the 'payments' table if it doesn't exist
+  })
+  .then(() => {
+    console.log('Payment model synced with database.');
+    app.listen(3000, () => console.log('SATIM middleware running on port 3000'));
+  })
+  .catch(error => {
+    console.error('Unable to connect to the database or sync models:', error);
+    process.exit(1); // Exit if database connection fails, as the app cannot function without it
+  });

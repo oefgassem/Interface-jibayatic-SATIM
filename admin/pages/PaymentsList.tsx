@@ -3,14 +3,32 @@ import { MockBackend } from '../services/mockBackend';
 import { Payment, PaymentStatus } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { Eye, RefreshCw, Search, Download } from 'lucide-react';
+import axios from 'axios';
+
+// Base URL for your backend API
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000/api';
 
 export const PaymentsList = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [filter, setFilter] = useState('');
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = () => {
     setPayments(MockBackend.getPayments());
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get<Payment[]>(`${API_BASE_URL}/payments`);
+      setPayments(response.data);
+    } catch (err) {
+      console.error('Failed to fetch payments:', err);
+      setError('Failed to load payments. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -24,6 +42,18 @@ export const PaymentsList = () => {
     fetchData();
     if (selectedPayment && selectedPayment.id === id) {
         setSelectedPayment(MockBackend.getPaymentById(id) || null);
+  const handleRetry = async (orderId: string) => {
+    try {
+      await axios.post(`${API_BASE_URL}/payments/${orderId}/retry`);
+      fetchData(); // Refresh the list
+      if (selectedPayment && selectedPayment.orderId === orderId) {
+        // If the retried payment is currently selected, refetch its details
+        const response = await axios.get<Payment>(`${API_BASE_URL}/payments/${orderId}`);
+        setSelectedPayment(response.data);
+      }
+    } catch (err) {
+      console.error(`Failed to retry payment ${orderId}:`, err);
+      alert(`Failed to retry payment: ${err.response?.data?.error || err.message}`);
     }
   };
 
@@ -31,12 +61,16 @@ export const PaymentsList = () => {
     p.orderId.toLowerCase().includes(filter.toLowerCase()) || 
     p.satimPayload.pan.includes(filter) ||
     p.id.includes(filter)
+    p.orderNumber.toLowerCase().includes(filter.toLowerCase()) || // Search by original order number
+    (p.satimAckDetails?.pan && p.satimAckDetails.pan.includes(filter)) || // Search by PAN if available
+    p.orderId.includes(filter) // Search by SATIM transaction ID (orderId)
   );
 
   const exportCSV = () => {
     const headers = ["ID", "OrderID", "Amount", "Currency", "Status", "Time", "SAP_Msg"];
     const rows = payments.map(p => [
         p.id, p.orderId, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
+        p.orderId, p.orderNumber, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -80,18 +114,26 @@ export const PaymentsList = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredPayments.map((payment) => (
               <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+              <tr key={payment.orderId} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{payment.orderId}</div>
                   <div className="text-xs text-gray-500 font-mono">PAN: {payment.satimPayload.pan}</div>
+                  <div className="text-sm font-medium text-gray-900">{payment.orderNumber}</div>
+                  <div className="text-xs text-gray-500 font-mono">
+                    ID: {payment.orderId}
+                    {payment.satimAckDetails?.pan && <span className="ml-2">PAN: {payment.satimAckDetails.pan}</span>}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900 font-bold">{payment.amount.toLocaleString()} <span className="text-xs font-normal text-gray-500">{payment.currency}</span></div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <StatusBadge status={payment.status} />
+                  <StatusBadge status={payment.status as PaymentStatus} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {payment.retryCount}
+                  {payment.retryCount} {payment.lastError && <span className="text-red-500 text-xs ml-1">(Error)</span>}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(payment.createdAt).toLocaleString()}
@@ -106,6 +148,18 @@ export const PaymentsList = () => {
                 </td>
               </tr>
             ))}
+            {loading && (
+                <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                        Loading payments...
+                    </td>
+                </tr>
+            )}
+            {error && (
+                <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-red-500">{error}</td>
+                </tr>
+            )}
             {filteredPayments.length === 0 && (
                 <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
@@ -131,8 +185,10 @@ export const PaymentsList = () => {
                     <div>
                         <p className="text-sm text-gray-500">Order ID</p>
                         <p className="text-xl font-bold text-gray-900">{selectedPayment.orderId}</p>
+                        <p className="text-xl font-bold text-gray-900">{selectedPayment.orderNumber}</p>
                     </div>
                     <StatusBadge status={selectedPayment.status} />
+                    <StatusBadge status={selectedPayment.status as PaymentStatus} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -144,6 +200,14 @@ export const PaymentsList = () => {
                             <p><span className="font-semibold">Time:</span> {selectedPayment.satimPayload.transactionDate}</p>
                             <p><span className="font-semibold">Amount:</span> {selectedPayment.amount} {selectedPayment.currency}</p>
                         </div>
+                        {selectedPayment.satimAckDetails ? (
+                            <div className="space-y-1 text-sm text-blue-900">
+                                <p><span className="font-semibold">PAN:</span> {selectedPayment.satimAckDetails.pan}</p>
+                                <p><span className="font-semibold">Approval:</span> {selectedPayment.satimAckDetails.approvalCode}</p>
+                                <p><span className="font-semibold">Time:</span> {selectedPayment.satimAckDetails.transactionDate}</p>
+                                <p><span className="font-semibold">Amount:</span> {selectedPayment.amount} {selectedPayment.currency}</p>
+                            </div>
+                        ) : (<p className="text-sm text-gray-500 italic">No SATIM acknowledgement details yet.</p>)}
                     </div>
                     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">SAP S/4HANA Status</h4>
@@ -166,6 +230,7 @@ export const PaymentsList = () => {
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Raw Payload (JSON)</h4>
                     <pre className="bg-slate-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto font-mono">
 {JSON.stringify(selectedPayment.satimPayload, null, 2)}
+{JSON.stringify(selectedPayment.satimRegisterResponse, null, 2)}
                     </pre>
                 </div>
             </div>
@@ -178,6 +243,7 @@ export const PaymentsList = () => {
                     Close
                 </button>
                 {(selectedPayment.status === PaymentStatus.ERROR || selectedPayment.status === PaymentStatus.RECEIVED) && (
+                {(selectedPayment.status === PaymentStatus.ERROR || selectedPayment.status === PaymentStatus.FAILED || selectedPayment.status === PaymentStatus.RECEIVED) && (
                      <button 
                         onClick={() => handleRetry(selectedPayment.id)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
