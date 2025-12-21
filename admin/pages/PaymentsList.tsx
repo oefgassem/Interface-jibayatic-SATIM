@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { MockBackend } from '../services/mockBackend';
 import { Payment, PaymentStatus } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { Eye, RefreshCw, Search, Download } from 'lucide-react';
 import axios from 'axios';
 
 // Base URL for your backend API
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost/api';
 
 export const PaymentsList = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -15,8 +14,6 @@ export const PaymentsList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = () => {
-    setPayments(MockBackend.getPayments());
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -37,11 +34,6 @@ export const PaymentsList = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleRetry = (id: string) => {
-    MockBackend.retryPaymentManually(id);
-    fetchData();
-    if (selectedPayment && selectedPayment.id === id) {
-        setSelectedPayment(MockBackend.getPaymentById(id) || null);
   const handleRetry = async (orderId: string) => {
     try {
       await axios.post(`${API_BASE_URL}/payments/${orderId}/retry`);
@@ -58,9 +50,6 @@ export const PaymentsList = () => {
   };
 
   const filteredPayments = payments.filter(p => 
-    p.orderId.toLowerCase().includes(filter.toLowerCase()) || 
-    p.satimPayload.pan.includes(filter) ||
-    p.id.includes(filter)
     p.orderNumber.toLowerCase().includes(filter.toLowerCase()) || // Search by original order number
     (p.satimAckDetails?.pan && p.satimAckDetails.pan.includes(filter)) || // Search by PAN if available
     p.orderId.includes(filter) // Search by SATIM transaction ID (orderId)
@@ -69,7 +58,6 @@ export const PaymentsList = () => {
   const exportCSV = () => {
     const headers = ["ID", "OrderID", "Amount", "Currency", "Status", "Time", "SAP_Msg"];
     const rows = payments.map(p => [
-        p.id, p.orderId, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
         p.orderId, p.orderNumber, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -113,11 +101,8 @@ export const PaymentsList = () => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredPayments.map((payment) => (
-              <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
               <tr key={payment.orderId} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{payment.orderId}</div>
-                  <div className="text-xs text-gray-500 font-mono">PAN: {payment.satimPayload.pan}</div>
                   <div className="text-sm font-medium text-gray-900">{payment.orderNumber}</div>
                   <div className="text-xs text-gray-500 font-mono">
                     ID: {payment.orderId}
@@ -128,11 +113,9 @@ export const PaymentsList = () => {
                   <div className="text-sm text-gray-900 font-bold">{payment.amount.toLocaleString()} <span className="text-xs font-normal text-gray-500">{payment.currency}</span></div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge status={payment.status} />
                   <StatusBadge status={payment.status as PaymentStatus} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {payment.retryCount}
                   {payment.retryCount} {payment.lastError && <span className="text-red-500 text-xs ml-1">(Error)</span>}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -184,22 +167,14 @@ export const PaymentsList = () => {
                 <div className="flex justify-between items-start">
                     <div>
                         <p className="text-sm text-gray-500">Order ID</p>
-                        <p className="text-xl font-bold text-gray-900">{selectedPayment.orderId}</p>
                         <p className="text-xl font-bold text-gray-900">{selectedPayment.orderNumber}</p>
                     </div>
-                    <StatusBadge status={selectedPayment.status} />
                     <StatusBadge status={selectedPayment.status as PaymentStatus} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                         <h4 className="text-xs font-bold text-blue-800 uppercase mb-2">SATIM Information</h4>
-                        <div className="space-y-1 text-sm text-blue-900">
-                            <p><span className="font-semibold">PAN:</span> {selectedPayment.satimPayload.pan}</p>
-                            <p><span className="font-semibold">Approval:</span> {selectedPayment.satimPayload.approvalCode}</p>
-                            <p><span className="font-semibold">Time:</span> {selectedPayment.satimPayload.transactionDate}</p>
-                            <p><span className="font-semibold">Amount:</span> {selectedPayment.amount} {selectedPayment.currency}</p>
-                        </div>
                         {selectedPayment.satimAckDetails ? (
                             <div className="space-y-1 text-sm text-blue-900">
                                 <p><span className="font-semibold">PAN:</span> {selectedPayment.satimAckDetails.pan}</p>
@@ -213,9 +188,7 @@ export const PaymentsList = () => {
                         <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">SAP S/4HANA Status</h4>
                         {selectedPayment.sapResponse ? (
                              <div className="space-y-1 text-sm text-gray-800">
-                                <p><span className="font-semibold">Doc ID:</span> {selectedPayment.sapResponse.sapDocumentId || 'N/A'}</p>
                                 <p><span className="font-semibold">Msg:</span> {selectedPayment.sapResponse.message}</p>
-                                <p><span className="font-semibold">Fiscal Year:</span> {selectedPayment.sapResponse.fiscalYear}</p>
                             </div>
                         ) : (
                             <p className="text-sm text-gray-500 italic">No response from SAP yet.</p>
@@ -229,7 +202,6 @@ export const PaymentsList = () => {
                 <div>
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Raw Payload (JSON)</h4>
                     <pre className="bg-slate-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto font-mono">
-{JSON.stringify(selectedPayment.satimPayload, null, 2)}
 {JSON.stringify(selectedPayment.satimRegisterResponse, null, 2)}
                     </pre>
                 </div>
@@ -242,7 +214,6 @@ export const PaymentsList = () => {
                 >
                     Close
                 </button>
-                {(selectedPayment.status === PaymentStatus.ERROR || selectedPayment.status === PaymentStatus.RECEIVED) && (
                 {(selectedPayment.status === PaymentStatus.ERROR || selectedPayment.status === PaymentStatus.FAILED || selectedPayment.status === PaymentStatus.RECEIVED) && (
                      <button 
                         onClick={() => handleRetry(selectedPayment.id)}

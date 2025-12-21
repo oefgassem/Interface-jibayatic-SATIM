@@ -1,0 +1,157 @@
+REPORT z_create_post_payment_lot.
+
+*---------------------------------------------------------------------*
+* Hard-coded test data (adjust if needed)
+*---------------------------------------------------------------------*
+DATA:
+  gv_comp_code       TYPE bukrs VALUE 'CDI',
+  gv_bus_area        TYPE gsber VALUE '19A',
+  gv_search_term     TYPE char20 VALUE 'SATIM212143',
+  gv_fikey           TYPE char30 VALUE 'SAT4573',
+  gv_additional_info TYPE char100 VALUE 'SATIM test payment',
+  gv_payment_lot     TYPE keyz1_kk VALUE 'SAT4573',
+  gv_amount          TYPE wrbtr VALUE '10000'.
+
+*---------------------------------------------------------------------*
+* Variables
+*---------------------------------------------------------------------*
+DATA:
+  ls_paylot_hdr TYPE bapidfkkzk,
+  ls_payment    TYPE bapidfkkzp,
+  lt_payments   TYPE STANDARD TABLE OF bapidfkkzp,
+  ls_ret        TYPE bapiret2,
+  lt_ret        TYPE STANDARD TABLE OF bapiret2,
+  lt_ret_app    TYPE STANDARD TABLE OF bapiret2,
+  ls_dfkkzk     TYPE dfkkzk,
+  lt_dfkkzk     TYPE STANDARD TABLE OF dfkkzk,
+  gv_paylot_id  TYPE char20.
+
+*---------------------------------------------------------------------*
+* START-OF-SELECTION
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*---------------------------------------------------------------------*
+* 1. Create Payment Order Lot
+*---------------------------------------------------------------------*
+CLEAR ls_paylot_hdr.
+
+ls_paylot_hdr-comp_code        = gv_comp_code.
+ls_paylot_hdr-bus_area         = gv_bus_area.
+ls_paylot_hdr-search_term      = gv_search_term.
+ls_paylot_hdr-fikey            = gv_fikey.
+ls_paylot_hdr-additional_info  = gv_additional_info.
+ls_paylot_hdr-payment_lot      = gv_payment_lot.
+
+ls_paylot_hdr-doc_type         = 'EC'.
+ls_paylot_hdr-post_date        = sy-datum.
+ls_paylot_hdr-doc_date         = sy-datum.
+ls_paylot_hdr-value_date       = sy-datum.
+ls_paylot_hdr-bank_cl_account  = '1100056000'.
+ls_paylot_hdr-currency         = 'DZD'.
+" ls_paylot_hdr-currency_iso     = 'DZD'.
+" ls_paylot_hdr-exch_rate        = '1.00000'.
+ls_paylot_hdr-line_item        = 'X'.
+ls_paylot_hdr-clear_reas       = '01'.
+ls_paylot_hdr-payment_order_lot = 'X'.
+
+CLEAR ls_paylot_hdr-exch_rate.       " Must be empty/0
+
+CALL FUNCTION 'BAPI_CTRACPAYMINC_CREATE'
+  EXPORTING
+    paymentlotheader = ls_paylot_hdr
+  IMPORTING
+    return           = ls_ret.
+
+WRITE: / 'CREATE return:', ls_ret-type, ls_ret-message.
+
+IF ls_ret-type = 'E' OR ls_ret-type = 'A'.
+  WRITE: / 'Creation failed, stopping'.
+  RETURN.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* 2. Determine payment lot ID (KEYZ1)
+*---------------------------------------------------------------------*
+gv_paylot_id = gv_payment_lot.
+
+IF gv_paylot_id IS INITIAL.
+  SELECT *
+    FROM dfkkzk
+    WHERE bukrs = @gv_comp_code
+      AND fikey = @gv_fikey
+    INTO TABLE @lt_dfkkzk.
+
+  SORT lt_dfkkzk BY erdat DESCENDING ertim DESCENDING.
+  READ TABLE lt_dfkkzk INTO ls_dfkkzk INDEX 1.
+  IF sy-subrc = 0.
+    gv_paylot_id = ls_dfkkzk-keyz1.
+  ENDIF.
+ENDIF.
+
+WRITE: / 'Payment lot ID:', gv_paylot_id.
+
+*---------------------------------------------------------------------*
+* 3. Append ONE payment item
+*---------------------------------------------------------------------*
+CLEAR ls_payment.
+CLEAR lt_payments.
+
+ls_payment-payment_lot    = gv_payment_lot.
+ls_payment-item_number    = '000001'.          " NUMC 6 – mandatory
+ls_payment-paymnet_amount = gv_amount.         " BETRZ (FP45 amount)
+ls_payment-CURRENCY = 'DZD'.
+ls_payment-comp_code      = gv_comp_code.
+ls_payment-bus_area       = gv_bus_area.
+
+" Payment Order selection (mandatory for PO lot)
+ls_payment-sel_category1 = 'Y'.
+ls_payment-field_value1 = gv_search_term.
+
+BREAK-POINT.
+
+APPEND ls_payment TO lt_payments.
+
+CALL FUNCTION 'BAPI_CTRACPAYMINC_APPEND'
+  IMPORTING
+    return   = ls_ret
+  TABLES
+    payments = lt_payments.
+
+WRITE: / 'APPEND return:', ls_ret-type, ls_ret-message.
+
+IF ls_ret-type = 'E' OR ls_ret-type = 'A'.
+  WRITE: / 'Append failed'.
+  RETURN.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* 4. Close payment lot
+*---------------------------------------------------------------------*
+CALL FUNCTION 'BAPI_CTRACPAYMINC_CLOSE'
+  EXPORTING
+    paymentlot = gv_payment_lot    " Ensure parameter name matches SE37 (likely PAYMENTLOT)
+  IMPORTING
+    return     = ls_ret.
+
+WRITE: / 'CLOSE return:', ls_ret-type, ls_ret-message.
+
+*---------------------------------------------------------------------*
+* 5. Release payment lot
+*---------------------------------------------------------------------*
+CALL FUNCTION 'BAPI_CTRACPAYMINC_RELEASE'
+  EXPORTING
+    paymentlot = gv_payment_lot    " Ensure parameter name matches SE37 (likely PAYMENTLOT)
+  IMPORTING
+    return     = ls_ret.
+
+WRITE: / 'RELEASE return:', ls_ret-type, ls_ret-message.
+
+*---------------------------------------------------------------------*
+* 6. Commit
+*---------------------------------------------------------------------*
+CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+  EXPORTING
+    wait = 'X'.
+
+WRITE: / 'Done.'.

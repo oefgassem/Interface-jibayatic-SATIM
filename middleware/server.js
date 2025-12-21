@@ -5,8 +5,8 @@ const morgan = require('morgan');
 const Redis = require('ioredis');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const { Queue, Worker } = require('bullmq'); // Added Worker, though not directly used in server.js, useful for worker-satim.js
-const { Sequelize, DataTypes } = require('sequelize'); // Import Sequelize and DataTypes
+const { Queue } = require('bullmq');
+const { sequelize, Payment } = require('./db'); // Import sequelize and Payment model from db.js
 const cors = require('cors');
 
 
@@ -24,62 +24,6 @@ const redisOpts = {
   port: Number(process.env.REDIS_PORT || 6379),
 };
 const redis = new Redis(redisOpts);
-
-// POSTGRESQL SETUP
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
-  {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    dialect: 'postgres',
-    logging: false, // Set to true to see SQL queries in console, useful for debugging
-  }
-);
-
-// Define Payment Model
-const Payment = sequelize.define('Payment', {
-  orderId: { type: DataTypes.STRING, primaryKey: true, allowNull: false, unique: true },
-  orderNumber: { type: DataTypes.STRING, allowNull: false }, // The original order number from the frontend
-  amount: { type: DataTypes.INTEGER, allowNull: false }, // Store in smallest currency unit (e.g., cents)
-  currency: { type: DataTypes.STRING(3), allowNull: false }, // e.g., '012' for DZD
-  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' }, // e.g., 'registered', 'pending', 'success', 'failed', 'refunded'
-  retries: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-  satimResponse: { type: DataTypes.JSONB, allowNull: true }, // Store the full initial SATIM registration response
-  actions: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }, // Array of action objects { timestamp, type, details }
-}, {
-  tableName: 'payments', // Explicitly set table name
-  timestamps: true, // Adds createdAt and updatedAt fields automatically
-});
-
-// This utility function will now interact with the database
-// It's designed to update a payment record and append an action to its history
-// The worker-satim.js will also need a similar function or direct model access.
-async function updatePaymentRecord(orderId, updates, actionType, actionDetails = {}) {
-  // This function will be used by the worker-satim.js to update payment status
-  // For server.js, we primarily use Payment.create and Payment.findByPk
-  // However, it's good to have a consistent update mechanism.
-  try {
-    const payment = await Payment.findByPk(orderId);
-    if (!payment) {
-      console.warn(`Payment with orderId ${orderId} not found for update.`);
-      return null;
-    }
-
-    const newActions = [...payment.actions, {
-      timestamp: new Date().toISOString(),
-      type: actionType,
-      details: actionDetails,
-    }];
-
-    await payment.update({ ...updates, actions: newActions });
-    return payment;
-  } catch (error) {
-    console.error(`Error updating payment record for orderId ${orderId}:`, error);
-    throw error; // Re-throw to be handled by caller
-  }
-}
 
 // QUEUE (BullMQ)
 const ackQueue = new Queue('satim-ack', { connection: redisOpts });
@@ -148,12 +92,12 @@ app.post('/api/satim/register', async (req, res) => {
       orderNumber: orderNumber,
       amount: amount,
       currency: currency,
-      status: 'registered', // Initial status
-      retries: 0,
-      satimResponse: data, // Store the full SATIM response for reference
+      status: 'registered',
+      retryCount: 0, // Initial retry count
+      satimRegisterResponse: data, // Store the full SATIM registration response
       actions: [{ // Record the initial action
         timestamp: new Date().toISOString(),
-        type: 'registered',
+        type: 'SATIM_REGISTERED',
         details: { satimResponse: data }
       }]
     });
@@ -181,22 +125,78 @@ app.get('/api/satim/return', async (req, res) => {
   `);
 });
 
-// ----------- PAYMENT STATUS (from DB) -----------
-app.get('/api/payment-status', async (req, res) => {
-  const orderId = req.query.orderId;
-  if (!orderId) return res.status(400).json({ error: 'orderId required' });
+// ----------- DEPRECATED ROUTE: Redirect for backward compatibility -----------
+app.get('/api/payment-status', (req, res) => {
+  const { orderId } = req.query;
+  if (!orderId) {
+    return res.status(400).json({ error: 'orderId query parameter is required for this legacy endpoint.' });
+  }
+  // Permanent redirect (301) to the new endpoint structure
+  return res.redirect(301, `/api/payments/${orderId}`);
+});
+
+// ----------- API to fetch all payments -----------
+app.get('/api/payments', async (req, res) => {
+  try {
+    const payments = await Payment.findAll({
+      order: [['createdAt', 'DESC']] // Order by creation date, newest first
+    });
+    return res.json(payments);
+  } catch (error) {
+    console.error('Error fetching all payments:', error);
+    return res.status(500).json({ error: 'Failed to retrieve payments' });
+  }
+});
+
+// ----------- API to fetch a single payment status (from DB) -----------
+app.get('/api/payments/:orderId', async (req, res) => {
+  const { orderId } = req.params;
 
   try {
     // Fetch payment record from PostgreSQL
     const payment = await Payment.findByPk(orderId, {
-      // Select specific attributes to return, excluding potentially sensitive full satimResponse
-      attributes: ['orderId', 'orderNumber', 'amount', 'currency', 'status', 'retries', 'createdAt', 'updatedAt', 'actions']
+      // Select specific attributes to return
+      attributes: [
+        'orderId', 'orderNumber', 'amount', 'currency', 'status', 'retryCount',
+        'createdAt', 'updatedAt', 'actions', 'satimRegisterResponse', 'satimAckDetails',
+        'sapResponse', 'lastError'
+      ]
     });
 
     if (!payment) {
       return res.status(404).json({ status: 'not_found', message: 'Payment not found' });
     }
-    return res.json(payment);
+    return res.json(payment.toJSON()); // Return plain JSON object
+  } catch (error) {
+    console.error(`Error fetching payment status for orderId ${orderId}:`, error);
+    return res.status(500).json({ error: 'Failed to retrieve payment status' });
+  }
+});
+
+// ----------- API to manually retry a payment -----------
+app.post('/api/payments/:orderId/retry', async (req, res) => {
+  const { orderId } = req.params;
+  try {
+    const payment = await Payment.findByPk(orderId);
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    // Update status to 'pending' or 'received' and increment retryCount
+    await payment.update({
+      status: 'received', // Or 'pending', depending on your desired retry flow
+      retryCount: payment.retryCount + 1,
+      lastError: null, // Clear previous error on retry
+      actions: [...payment.actions, {
+        timestamp: new Date().toISOString(),
+        type: 'MANUAL_RETRY',
+        details: { previousStatus: payment.status, newRetryCount: payment.retryCount + 1 }
+      }]
+    });
+    // Re-enqueue the acknowledgement job for this orderId
+    await ackQueue.add('acknowledge', { orderId }, { jobId: uuidv4() });
+
+    return res.json({ message: 'Payment retry initiated', payment: payment.toJSON() });
   } catch (error) {
     console.error(`Error fetching payment status for orderId ${orderId}:`, error);
     return res.status(500).json({ error: 'Failed to retrieve payment status' });
@@ -211,7 +211,7 @@ app.get('/api/health', (_, res) => res.json({ ok: true }));
 sequelize.authenticate()
   .then(() => {
     console.log('PostgreSQL connection has been established successfully.');
-    return sequelize.sync(); // This will create the 'payments' table if it doesn't exist
+    return sequelize.sync({ alter: true }); // This will alter the table to add new columns like 'retryCount'
   })
   .then(() => {
     console.log('Payment model synced with database.');

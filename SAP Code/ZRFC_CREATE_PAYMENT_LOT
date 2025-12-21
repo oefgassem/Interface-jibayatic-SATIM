@@ -1,0 +1,103 @@
+FUNCTION ZRFC_CREATE_PAYMENT_LOT.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(I_COMP_CODE) TYPE  BUKRS OPTIONAL
+*"     VALUE(I_BUS_AREA) TYPE  GSBER OPTIONAL
+*"     VALUE(I_SEARCH_TERM) TYPE  CHAR20 OPTIONAL
+*"     VALUE(I_FIKEY) TYPE  CHAR30 OPTIONAL
+*"     VALUE(I_ADDITIONAL_INFO) TYPE  CHAR100 OPTIONAL
+*"     VALUE(I_PAYMENT_LOT) TYPE  CHAR20 OPTIONAL
+*"  EXPORTING
+*"     VALUE(E_PAYMENT_LOT_ID) TYPE  CHAR20
+*"     VALUE(E_RETURN) TYPE  BAPIRET2
+*"  CHANGING
+*"     VALUE(E_RETURN_TAB) TYPE  ZTT_BAPIRET2 OPTIONAL
+*"  EXCEPTIONS
+*"      INVALID_INPUT
+*"      BAPI_ERROR
+*"----------------------------------------------------------------------
+  DATA: ls_paylot_hdr TYPE bapidfkkzk,
+        lv_ret        TYPE bapiret2,
+        lt_ret        TYPE TABLE OF bapiret2,
+        ls_msg        TYPE bapiret2,
+        ls_dfkkzk     TYPE dfkkzk,
+        lt_dfkkzk     TYPE TABLE OF dfkkzk.
+
+  CLEAR: ls_paylot_hdr, lv_ret, lt_ret, e_payment_lot_id, e_return.
+
+  " Validate mandatory input
+  IF i_comp_code IS INITIAL.
+    e_return-type = 'E'.
+    e_return-message = 'Missing required field: I_COMP_CODE'.
+    APPEND e_return TO lt_ret.
+    CLEAR e_return_tab.
+    APPEND LINES OF lt_ret TO e_return_tab.
+    RAISE invalid_input.
+  ENDIF.
+
+  " Build header
+  ls_paylot_hdr-comp_code       = i_comp_code.
+  ls_paylot_hdr-bus_area        = i_bus_area.
+  ls_paylot_hdr-search_term     = i_search_term.
+  ls_paylot_hdr-fikey           = i_fikey.
+  ls_paylot_hdr-additional_info = i_additional_info.
+  ls_paylot_hdr-payment_lot     = i_payment_lot.
+
+  ls_paylot_hdr-doc_type         = 'EC'.
+  ls_paylot_hdr-post_date        = sy-datum.
+  ls_paylot_hdr-doc_date         = sy-datum.
+  ls_paylot_hdr-value_date       = sy-datum.
+  ls_paylot_hdr-bank_cl_account  = '1100056000'.
+  ls_paylot_hdr-currency         = 'DZD'.
+  ls_paylot_hdr-currency_iso     = 'DZD'.
+  ls_paylot_hdr-exch_rate        = '1.00000'.
+  ls_paylot_hdr-line_item        = 'X'.
+  ls_paylot_hdr-clear_reas       = '01'.
+  ls_paylot_hdr-payment_order_lot = 'X'.
+
+  " Call BAPI
+  CALL FUNCTION 'BAPI_CTRACPAYMINC_CREATE'
+    EXPORTING
+      paymentlotheader = ls_paylot_hdr
+    IMPORTING
+      return           = lv_ret.
+
+  " Collect messages
+  APPEND lv_ret TO lt_ret.
+  e_return = lv_ret.
+
+  " safe copy to changing table
+  CLEAR e_return_tab.
+  APPEND LINES OF lt_ret TO e_return_tab.
+
+  " If error/abort -> do not commit
+  IF lv_ret-type = 'E' OR lv_ret-type = 'A'.
+    RAISE bapi_error.
+  ELSE.
+    CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+      EXPORTING wait = 'X'.
+  ENDIF.
+
+  " Determine payment lot id: prefer caller provided value
+  IF i_payment_lot IS NOT INITIAL.
+    e_payment_lot_id = i_payment_lot.
+    RETURN.
+  ENDIF.
+
+  " Best-effort: lookup in DFKKZK by bukrs + fikey OR search_term
+  SELECT *
+   FROM dfkkzk
+   WHERE bukrs = @i_comp_code
+     AND fikey = @i_fikey
+   INTO TABLE @lt_dfkkzk.
+
+  IF sy-subrc = 0.
+    SORT lt_dfkkzk BY erdat DESCENDING ERTIM DESCENDING.
+    READ TABLE lt_dfkkzk INTO ls_dfkkzk INDEX 1.
+    IF sy-subrc = 0.
+      e_payment_lot_id = ls_dfkkzk-KEYZ1.
+    ENDIF.
+  ENDIF.
+
+ENDFUNCTION.
