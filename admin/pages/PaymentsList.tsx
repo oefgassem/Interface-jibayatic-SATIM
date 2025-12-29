@@ -5,7 +5,7 @@ import { Eye, RefreshCw, Search, Download } from 'lucide-react';
 import axios from 'axios';
 
 // Base URL for your backend API
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://qas.local.test/middleware/api';
 
 export const PaymentsList = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -56,9 +56,9 @@ export const PaymentsList = () => {
   );
 
   const exportCSV = () => {
-    const headers = ["ID", "OrderID", "Amount", "Currency", "Status", "Time", "SAP_Msg"];
+    const headers = ["ID", "OrderID", "accountId", "Amount", "Currency", "Status", "Time", "SAP_Msg"];
     const rows = payments.map(p => [
-        p.orderId, p.orderNumber, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
+        p.orderId, p.orderNumber, p.acountId, p.amount, p.currency, p.status, p.createdAt, p.sapResponse?.message || ""
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -92,6 +92,7 @@ export const PaymentsList = () => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account ID</th> 
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Retries</th>
@@ -108,6 +109,9 @@ export const PaymentsList = () => {
                     ID: {payment.orderId}
                     {payment.satimAckDetails?.pan && <span className="ml-2">PAN: {payment.satimAckDetails.pan}</span>}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900 font-bold">{payment.accountId} <span className="text-xs font-normal text-gray-500">{payment.currency}</span></div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900 font-bold">{payment.amount.toLocaleString()} <span className="text-xs font-normal text-gray-500">{payment.currency}</span></div>

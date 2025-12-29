@@ -1,13 +1,13 @@
 // admin/types.ts
 
 export enum PaymentStatus {
+  PENDING = 'pending',
   REGISTERED = 'registered',
-  RECEIVED = 'received', // Could be an intermediate status after SATIM callback, before ACK
-  SUCCESS = 'success',
-  FAILED = 'failed',
-  ERROR = 'error', // General processing error
-  REFUNDED = 'refunded',
-  PENDING = 'pending', // Initial status before registration
+  PAID = 'paid',
+  SAP_PENDING = 'sap_pending',
+  SAP_SYNCED = 'sap_synced',
+  SAP_FAILED = 'sap_failed',
+  ERROR = 'error',
 }
 
 export interface SatimPayload {

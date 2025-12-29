@@ -1,116 +1,119 @@
 // middleware/worker-satim.js
-const axios = require('axios');
-const Redis = require('ioredis');
-const { Worker } = require('bullmq');
-const { sequelize, Payment } = require('./db'); // Import sequelize and Payment model
 
+const axios = require('axios');
+const { Worker, Queue } = require('bullmq');
+const { sequelize, Payment } = require('./db');
+
+// ---------------- REDIS ----------------
 const redisOpts = {
   host: process.env.REDIS_HOST || 'redis',
-  port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379
+  port: Number(process.env.REDIS_PORT || 6379)
 };
-const redis = new Redis(redisOpts);
 
-const SATIM_ACK_URL = process.env.SATIM_ACK_URL || 'https://test2.satim.dz/payment/rest/public/acknowledgeTransaction.do';
+// Queue used to trigger SAP posting
+const sapQueue = new Queue('sap-post', { connection: redisOpts });
+
+// ---------------- SATIM CONFIG ----------------
+const SATIM_ACK_URL =
+  process.env.SATIM_ACK_URL ||
+  'https://test2.satim.dz/payment/rest/public/acknowledgeTransaction.do';
+
 const SATIM_USERNAME = process.env.SATIM_USERNAME || 'SAT2511200956';
 const SATIM_PASSWORD = process.env.SATIM_PASSWORD || 'satim120';
 
-// dummy SAP endpoint (replace by your real SAP integration or enqueue to another queue)
-const SAP_PUSH_URL = process.env.SAP_PUSH_URL || null;
+// ---------------- WORKER ----------------
+new Worker(
+  'satim-ack',
+  async job => {
+    const { orderId } = job.data;
 
-const worker = new Worker('satim-ack', async job => {
-  const { orderId } = job.data;
-  try {
-    // Call SATIM acknowledgeTransaction
+    // 1️⃣ Call SATIM acknowledgeTransaction
     const params = new URLSearchParams({
       userName: SATIM_USERNAME,
       password: SATIM_PASSWORD,
       orderId
     });
-    const url = `${SATIM_ACK_URL}?${params.toString()}`;
-    const resp = await axios.get(url, { timeout: 15000 });
+
+    const resp = await axios.get(
+      `${SATIM_ACK_URL}?${params.toString()}`,
+      { timeout: 15000 }
+    );
+
     const data = resp.data;
 
-    // Find the payment in PostgreSQL
+    // 2️⃣ Load payment from DB
     const payment = await Payment.findByPk(orderId);
     if (!payment) {
-      console.warn(`Payment with orderId ${orderId} not found in DB for SATIM ACK update.`);
-      throw new Error(`Payment ${orderId} not found.`);
+      throw new Error(`Payment ${orderId} not found`);
     }
 
-    let newStatus = 'failed'; // Default to failed
-    let sapResponse = null;
-    let lastError = null;
+    // 3️⃣ Robust SATIM success detection
+    const isSuccess =
+      data?.params?.respCode === '00' ||
+      data?.actionCode === 0 ||
+      data?.ErrorCode === '0' ||
+      data?.ErrorCode === 0 ||
+      data?.OrderStatus === 2;
 
-    if (data.errorCode === 0) {
-      newStatus = 'success'; // SATIM ACK successful
+    if (isSuccess) {
+      // ✅ Payment confirmed by SATIM
+      await payment.update({
+        status: 'paid',
+        satimAckDetails: data,
+        lastError: null,
+        actions: [
+          ...payment.actions,
+          {
+            type: 'SATIM_ACK_OK',
+            timestamp: new Date().toISOString(),
+            details: data
+          }
+        ]
+      });
+
+      // 4️⃣ Enqueue SAP posting
+      await sapQueue.add('post-to-sap', { orderId });
+
     } else {
-      lastError = `SATIM ACK Error: ${data.errorMessage || 'Unknown error'}`;
-    }
-
-    // Optionally push to SAP (POST)
-    if (SAP_PUSH_URL) {
-      try {
-        const sapResp = await axios.post(SAP_PUSH_URL, {
-          orderId,
-          satim: data
-        }, { timeout: 10000 });
-        sapResponse = sapResp.data;
-        // Assuming SAP success means overall success, otherwise keep SATIM status
-        if (sapResponse.success === false) { // Example check for SAP failure
-          newStatus = 'failed';
-          lastError = sapResponse.message || 'SAP push failed';
-        }
-      } catch (sapErr) {
-        console.error('SAP push failed', sapErr.message || sapErr);
-        newStatus = 'failed';
-        lastError = `SAP Push Error: ${sapErr.message || sapErr}`;
-      }
-    }
-
-    // Update payment record in PostgreSQL
-    await payment.update({
-      status: newStatus,
-      satimAckDetails: data, // Store the full SATIM acknowledgement response
-      sapResponse: sapResponse,
-      lastError: lastError,
-      actions: [...payment.actions, {
-        timestamp: new Date().toISOString(),
-        type: 'SATIM_ACKNOWLEDGED',
-        details: { satimAck: data, sap: sapResponse, newStatus: newStatus, error: lastError }
-      }]
-    });
-
-    // Also store in Redis for quick lookup by frontend if needed (optional, DB is source of truth)
-    await redis.set(`payment:${orderId}`, JSON.stringify({ status: newStatus, result: data, sap: sapResponse, error: lastError }), 'EX', 60 * 60 * 24);
-
-    return { ok: true, satimAck: data, sap: sapResponse, status: newStatus };
-  } catch (err) {
-    console.error('worker error ack', err.message || err);
-    const payment = await Payment.findByPk(orderId);
-    if (payment) {
+      // ❌ SATIM reported payment failure
       await payment.update({
         status: 'error',
-        lastError: err.message || 'SATIM acknowledgement processing error',
-        actions: [...payment.actions, {
-          timestamp: new Date().toISOString(),
-          type: 'SATIM_ACK_ERROR',
-          details: { error: err.message || 'ack error' }
-        }]
+        satimAckDetails: data,
+        lastError: 'SATIM ACK failed',
+        actions: [
+          ...payment.actions,
+          {
+            type: 'SATIM_ACK_FAILED',
+            timestamp: new Date().toISOString(),
+            details: data
+          }
+        ]
       });
     }
-    throw err;
-  }
-}, { connection: redisOpts });
 
-worker.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed: ${err.message}`);
+    return { ok: true };
+  },
+  {
+    connection: redisOpts,
+    attempts: 5,
+    backoff: {
+      type: 'exponential',
+      delay: 60_000 // 1 minute
+    }
+  }
+);
+
+// ---------------- SAFETY LOGS ----------------
+process.on('unhandledRejection', err => {
+  console.error('Unhandled rejection in SATIM worker:', err);
 });
 
-// Initialize database connection for the worker
+// ---------------- DB CONNECTION ----------------
 sequelize.authenticate()
   .then(() => {
-    console.log('PostgreSQL connection for worker established successfully.');
+    console.log('SATIM worker: PostgreSQL connected');
   })
-  .catch(error => {
-    console.error('Unable to connect to the database for worker:', error);
+  .catch(err => {
+    console.error('SATIM worker: DB connection failed', err);
+    process.exit(1);
   });

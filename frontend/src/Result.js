@@ -5,56 +5,79 @@ import { useSearchParams, Link } from 'react-router-dom';
 export default function Result() {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
-  const [status, setStatus] = useState('pending');
-  const [data, setData] = useState(null);
+
+  const [payment, setPayment] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!orderId) return setStatus('missing');
+    if (!orderId) {
+      setError('orderId manquant');
+      return;
+    }
 
-    let mounted = true;
     const interval = setInterval(async () => {
       try {
-        const resp = await fetch(`/api/payment-status?orderId=${encodeURIComponent(orderId)}`);
-        const json = await resp.json();
-        if (json.status === 'done' || json.status === 'failed' || json.status === 'registered') {
-          if (mounted) {
-            setStatus(json.status === 'done' ? 'success' : (json.status === 'registered' ? 'registered' : 'failed'));
-            setData(json.result || json);
-          }
-          // optionally stop polling when result found
-          if (json.status === 'done' || json.status === 'failed') {
-            clearInterval(interval);
-          }
-        } else if (json.status === 'unknown') {
-          // keep polling
+        const resp = await fetch(`/middleware/api/payments/${orderId}`);
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
         }
+
+        const json = await resp.json();
+        setPayment(json);
+
+        // Stop polling on final states
+        if (['sap_synced', 'sap_failed', 'error'].includes(json.status)) {
+          clearInterval(interval);
+        }
+
       } catch (err) {
         console.error('poll error', err);
+        setError(err.message);
       }
     }, 2500);
 
-    return () => { mounted = false; clearInterval(interval); };
+    return () => clearInterval(interval);
   }, [orderId]);
 
+  const status = payment?.status;
+
   return (
-    <div style={{padding:20}}>
+    <div style={{ padding: 20 }}>
       <h2>Résultat du paiement</h2>
-      {!orderId && <p>orderId manquant</p>}
-      {orderId && status === 'pending' && <p>En attente du retour SATIM...</p>}
-      {orderId && status === 'registered' && <p>Paiement enregistré — en attente confirmation.</p>}
-      {orderId && status === 'success' && (
+
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {!payment && !error && <p>Chargement…</p>}
+
+      {status === 'registered' && (
+        <p>⏳ Paiement enregistré, en attente de confirmation SATIM…</p>
+      )}
+
+      {status === 'paid' && (
+        <p>✅ Paiement confirmé, synchronisation SAP en cours…</p>
+      )}
+
+      {status === 'sap_pending' && (
+        <p>🔄 Envoi vers SAP en cours…</p>
+      )}
+
+      {status === 'sap_synced' && (
         <div>
-          <p style={{color:'green'}}>Paiement réussi ✅</p>
-          <pre>{JSON.stringify(data, null, 2)}</pre>
+          <p style={{ color: 'green' }}>🎉 Paiement synchronisé avec SAP</p>
+          <pre>{JSON.stringify(payment, null, 2)}</pre>
         </div>
       )}
-      {orderId && status === 'failed' && (
+
+      {['sap_failed', 'error'].includes(status) && (
         <div>
-          <p style={{color:'red'}}>Paiement échoué ❌</p>
-          <pre>{JSON.stringify(data, null, 2)}</pre>
+          <p style={{ color: 'red' }}>❌ Erreur lors du traitement</p>
+          <pre>{JSON.stringify(payment, null, 2)}</pre>
         </div>
       )}
-      <Link to="/">Retour</Link>
+
+      <br />
+      <Link to="/middleware/">Retour</Link>
     </div>
   );
 }

@@ -23,7 +23,6 @@ const redisOpts = {
   host: process.env.REDIS_HOST || 'redis',
   port: Number(process.env.REDIS_PORT || 6379),
 };
-const redis = new Redis(redisOpts);
 
 // QUEUE (BullMQ)
 const ackQueue = new Queue('satim-ack', { connection: redisOpts });
@@ -35,44 +34,18 @@ const SATIM_USERNAME = process.env.SATIM_USERNAME || 'SAT2511200956';
 const SATIM_PASSWORD = process.env.SATIM_PASSWORD || 'satim120';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8081';
 
-// ----------- TEST ENDPOINT (OLD PAY) -----------
-app.post('/api/pay', async (req, res) => {
-  try {
-    const payloadId = req.body.idempotencyKey || uuidv4();
-    const cacheKey = `pay:${payloadId}`;
-    const cached = await redis.get(cacheKey);
-
-    if (cached) return res.json({ fromCache: true, result: JSON.parse(cached) });
-
-    await new Promise(r => setTimeout(r, 500));
-
-    const result = {
-      status: 'OK',
-      transactionId: uuidv4(),
-      amount: req.body.amount || 10,
-      timestamp: new Date().toISOString()
-    };
-
-    await redis.set(cacheKey, JSON.stringify(result), 'EX', 60);
-    res.json({ fromCache: false, result });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'internal' });
-  }
-});
-
 // ----------- SATIM REGISTER PAYMENT -----------
 app.post('/api/satim/register', async (req, res) => {
   try {
-    const { orderNumber, amount, currency = '012', language = 'FR', returnUrl, failUrl } = req.body;
-    if (!orderNumber || !amount || !returnUrl || !failUrl)
-      return res.status(400).json({ error: 'orderNumber, amount, returnUrl, failUrl required' });
+    const { orderNumber, amount, accountId, currency = '012', language = 'FR', returnUrl, failUrl } = req.body;
+    if (!orderNumber || !amount || !accountId || !returnUrl || !failUrl)
+      return res.status(400).json({ error: 'orderNumber, amount, accountId, returnUrl, failUrl required' });
 
     const params = new URLSearchParams({
       userName: SATIM_USERNAME,
       password: SATIM_PASSWORD,
       orderNumber,
-      amount: String(amount),
+      amount: String(amount*100),
       currency,
       returnUrl,
       failUrl,
@@ -90,6 +63,7 @@ app.post('/api/satim/register', async (req, res) => {
     await Payment.create({
       orderId: data.orderId,
       orderNumber: orderNumber,
+      accountId: accountId,
       amount: amount,
       currency: currency,
       status: 'registered',
@@ -125,16 +99,6 @@ app.get('/api/satim/return', async (req, res) => {
   `);
 });
 
-// ----------- DEPRECATED ROUTE: Redirect for backward compatibility -----------
-app.get('/api/payment-status', (req, res) => {
-  const { orderId } = req.query;
-  if (!orderId) {
-    return res.status(400).json({ error: 'orderId query parameter is required for this legacy endpoint.' });
-  }
-  // Permanent redirect (301) to the new endpoint structure
-  return res.redirect(301, `/api/payments/${orderId}`);
-});
-
 // ----------- API to fetch all payments -----------
 app.get('/api/payments', async (req, res) => {
   try {
@@ -157,7 +121,7 @@ app.get('/api/payments/:orderId', async (req, res) => {
     const payment = await Payment.findByPk(orderId, {
       // Select specific attributes to return
       attributes: [
-        'orderId', 'orderNumber', 'amount', 'currency', 'status', 'retryCount',
+        'orderId', 'orderNumber', 'accountId', 'amount', 'currency', 'status', 'retryCount',
         'createdAt', 'updatedAt', 'actions', 'satimRegisterResponse', 'satimAckDetails',
         'sapResponse', 'lastError'
       ]
@@ -184,7 +148,7 @@ app.post('/api/payments/:orderId/retry', async (req, res) => {
 
     // Update status to 'pending' or 'received' and increment retryCount
     await payment.update({
-      status: 'received', // Or 'pending', depending on your desired retry flow
+      status: 'registered', // Or 'pending', depending on your desired retry flow
       retryCount: payment.retryCount + 1,
       lastError: null, // Clear previous error on retry
       actions: [...payment.actions, {
@@ -194,6 +158,7 @@ app.post('/api/payments/:orderId/retry', async (req, res) => {
       }]
     });
     // Re-enqueue the acknowledgement job for this orderId
+    console.log('[QUEUE] SATIM ACK enqueued', orderId);
     await ackQueue.add('acknowledge', { orderId }, { jobId: uuidv4() });
 
     return res.json({ message: 'Payment retry initiated', payment: payment.toJSON() });

@@ -17,6 +17,10 @@ const sequelize = new Sequelize(
 const Payment = sequelize.define('Payment', {
   orderId: { type: DataTypes.STRING, primaryKey: true, allowNull: false, unique: true },
   orderNumber: { type: DataTypes.STRING, allowNull: false }, // The original order number from the frontend
+  accountId: {                       
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   amount: { type: DataTypes.INTEGER, allowNull: false }, // Store in smallest currency unit (e.g., cents)
   currency: { type: DataTypes.STRING(3), allowNull: false }, // e.g., '012' for DZD
   status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' }, // e.g., 'registered', 'pending', 'success', 'failed', 'refunded', 'error'
@@ -24,6 +28,10 @@ const Payment = sequelize.define('Payment', {
   satimRegisterResponse: { type: DataTypes.JSONB, allowNull: true }, // Store the full initial SATIM registration response
   satimAckDetails: { type: DataTypes.JSONB, allowNull: true }, // Store details from SATIM acknowledgeTransaction
   sapResponse: { type: DataTypes.JSONB, allowNull: true }, // Store SAP S/4HANA response
+  sapSynced: { type: DataTypes.BOOLEAN, defaultValue: false },
+  sapRetryCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+  sapLastTryAt: { type: DataTypes.DATE, allowNull: true },
+  sapDocumentNumber: { type: DataTypes.STRING, allowNull: true },
   lastError: { type: DataTypes.TEXT, allowNull: true }, // Store the last error message
   actions: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }, // Array of action objects { timestamp, type, details }
 }, {
