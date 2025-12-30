@@ -8,6 +8,11 @@ const { v4: uuidv4 } = require('uuid');
 const { Queue } = require('bullmq');
 const { sequelize, Payment } = require('./db'); // Import sequelize and Payment model from db.js
 const cors = require('cors');
+const { generateSatimOrderNumber } = require('./satimOrderNumber');
+
+const satimModule = require('./satimOrderNumber');
+console.log('DEBUG satimOrderNumber module =', satimModule);
+
 
 
 // EXPRESS SETUP
@@ -34,18 +39,142 @@ const SATIM_USERNAME = process.env.SATIM_USERNAME || 'SAT2511200956';
 const SATIM_PASSWORD = process.env.SATIM_PASSWORD || 'satim120';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8081';
 
+const { fetchPendingAmount } = require('./sapPendingClient');
+
+// ----------- SATIM PREPARE PAYMENT -----------
+
+app.post('/api/payment/prepare', async (req, res) => {
+  try {
+    const { orderNumber, amount, accountId, returnUrl, failUrl } = req.body;
+
+    if (!orderNumber || !accountId || !returnUrl || !failUrl) {
+      return res.status(400).json({
+        error: 'orderNumber, accountId, returnUrl, failUrl required'
+      });
+    }
+
+    // 1️⃣ Get authoritative amount from SAP
+    const { sapAmount, currency: sapCurrency } =
+      await fetchPendingAmount(orderNumber);
+
+    // 2️⃣ Apply DGI rule
+    const payableAmountCents = Math.round(Number(sapAmount) * 10000);
+
+    if (payableAmountCents <= 0) {
+      return res.status(400).json({
+        error: 'Montant SAP invalide'
+      });
+    }
+
+    // Generate technical identifiers
+    const confirmationToken = `PRE_${uuidv4()}`;
+    const satimOrderNumber = await generateSatimOrderNumber(sequelize);
+    
+    const sapAmountCents = Math.round(Number(sapAmount) * 10000);
+
+    // 5️⃣ Persist PRECHECK payment
+    await Payment.create({
+      orderId: confirmationToken,        // internal temporary ID
+      orderNumber,                       // 🔵 liasse fiscale (business)
+      satimOrderNumber,                  // 🔴 unique SATIM order
+      accountId,
+      amount: payableAmountCents,             // amount to be paid
+      sapAmount: sapAmountCents,      // raw SAP amount
+      mcfAmount: amount || null,         // original MCF amount (audit)
+      currency: 'DZD',           // 🔴 numeric currency (012)
+      status: 'pending',
+      confirmationToken,
+      actions: [
+        {
+          type: 'PRECHECK_CREATED',
+          timestamp: new Date().toISOString(),
+          details: {
+            liasse: orderNumber,
+            satimOrderNumber,
+            sapAmount,
+            payableAmountCents,
+            sapCurrency,
+            currency: 'DZD'
+          }
+        }
+      ]
+    });
+
+    // 6️⃣ Respond to frontend (confirmation screen)
+    return res.json({
+      orderNumber,              // liasse (display only)
+      satimOrderNumber,         // optional (debug / admin)
+      accountId,
+      amountToPay: payableAmountCents / 100,
+      currency: 'DZD',
+      confirmationToken,
+      logs: {
+        sap: 'Montant récupéré depuis SAP (pénalités incluses)',
+        mcf: 'Montant MCF ignoré',
+        dgi: 'Paiement non encore initié'
+      },
+      returnUrl,
+      failUrl
+    });
+
+  } catch (err) {
+    console.error('prepare error', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ----------- SATIM REGISTER PAYMENT -----------
 app.post('/api/satim/register', async (req, res) => {
   try {
-    const { orderNumber, amount, accountId, currency = '012', language = 'FR', returnUrl, failUrl } = req.body;
-    if (!orderNumber || !amount || !accountId || !returnUrl || !failUrl)
-      return res.status(400).json({ error: 'orderNumber, amount, accountId, returnUrl, failUrl required' });
+    let orderNumber, amount, accountId, currency = '012';
+    const { language = 'FR', returnUrl, failUrl, confirmationToken } = req.body;
 
+    // -------------------------------
+    // CASE 1: NEW FLOW (FROM PREPARE)
+    // -------------------------------
+    if (confirmationToken) {
+      const payment = await Payment.findOne({
+        where: { confirmationToken }
+      });
+
+      if (!payment) {
+        return res.status(404).json({ error: 'Invalid confirmation token' });
+      }
+
+      orderNumber = payment.satimOrderNumber;
+      amount = payment.amount;        // ✅ AMOUNT FROM SAP (already /10)
+      accountId = payment.accountId;
+      currency = '012';
+
+      // Safety: prevent double register
+      if (payment.status !== 'pending') {
+        return res.status(400).json({
+          error: `Payment already processed (status=${payment.status})`
+        });
+      }
+    }
+
+    // -------------------------------
+    // CASE 2: OLD FLOW (LEGACY)
+    // -------------------------------
+    else {
+      ({ orderNumber, amount, accountId, currency = '012' } = req.body);
+
+      if (!orderNumber || !amount || !accountId || !returnUrl || !failUrl) {
+        return res.status(400).json({
+          error: 'orderNumber, amount, accountId, returnUrl, failUrl required'
+        });
+      }
+    }
+
+    // -------------------------------
+    // SATIM REGISTER CALL (UNCHANGED)
+    // -------------------------------
     const params = new URLSearchParams({
       userName: SATIM_USERNAME,
       password: SATIM_PASSWORD,
       orderNumber,
-      amount: String(amount*100),
+      amount: String(amount), // SATIM expects cents
       currency,
       returnUrl,
       failUrl,
@@ -56,27 +185,59 @@ app.post('/api/satim/register', async (req, res) => {
     const satimResp = await axios.get(url, { timeout: 15000 });
     const data = satimResp.data;
 
-    if (data.errorCode !== 0)
-      return res.status(500).json({ error: 'SATIM register failed', data });
+    if (data.errorCode !== 0) {
+      return res.status(500).json({
+        error: 'SATIM register failed',
+        data
+      });
+    }
 
-    // Save initial payment record to PostgreSQL
-    await Payment.create({
+    // -------------------------------
+    // SAVE / UPDATE PAYMENT IN DB
+    // -------------------------------
+    if (confirmationToken) {
+      // UPDATE existing PRECHECK record
+      await Payment.update(
+        {
+          orderId: data.orderId,
+          status: 'registered',
+          satimRegisterResponse: data,
+          actions: sequelize.literal(`
+            actions || jsonb_build_array(
+              jsonb_build_object(
+                'timestamp', '${new Date().toISOString()}',
+                'type', 'SATIM_REGISTERED',
+                'details', jsonb_build_object('satimResponse', '${JSON.stringify(data)}')
+              )
+            )
+          `)
+        },
+        { where: { confirmationToken } }
+      );
+    } else {
+      // CREATE new record (legacy)
+      await Payment.create({
+        orderId: data.orderId,
+        orderNumber,
+        accountId,
+        amount,
+        currency,
+        status: 'registered',
+        retryCount: 0,
+        satimRegisterResponse: data,
+        actions: [{
+          timestamp: new Date().toISOString(),
+          type: 'SATIM_REGISTERED',
+          details: { satimResponse: data }
+        }]
+      });
+    }
+
+    return res.json({
       orderId: data.orderId,
-      orderNumber: orderNumber,
-      accountId: accountId,
-      amount: amount,
-      currency: currency,
-      status: 'registered',
-      retryCount: 0, // Initial retry count
-      satimRegisterResponse: data, // Store the full SATIM registration response
-      actions: [{ // Record the initial action
-        timestamp: new Date().toISOString(),
-        type: 'SATIM_REGISTERED',
-        details: { satimResponse: data }
-      }]
+      formUrl: data.formUrl
     });
 
-    return res.json({ orderId: data.orderId, formUrl: data.formUrl });
   } catch (err) {
     console.error('register error', err);
     return res.status(500).json({ error: err.message });

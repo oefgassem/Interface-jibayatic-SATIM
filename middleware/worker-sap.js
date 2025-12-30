@@ -35,8 +35,10 @@ new Worker(
 
       // Call SAP
       const sapResponse = await postPayment({
-        IvGpart: payment.accountId,
-        IvAmount: String(payment.amount),
+        IvFbnum: payment.orderNumber,           // NUMÉRO DE LIASSE
+        IvAmount: String(payment.amount/100),       // CENTS
+        // IvGpart: payment.accountId,
+        // IvAmount: String(payment.amount),
         IvDate: new Date().toISOString().slice(0, 10) + 'T00:00:00'
       });
 

@@ -17,11 +17,19 @@ const sequelize = new Sequelize(
 const Payment = sequelize.define('Payment', {
   orderId: { type: DataTypes.STRING, primaryKey: true, allowNull: false, unique: true },
   orderNumber: { type: DataTypes.STRING, allowNull: false }, // The original order number from the frontend
+  satimOrderNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
+  },
   accountId: {                       
     type: DataTypes.STRING,
     allowNull: true
   },
   amount: { type: DataTypes.INTEGER, allowNull: false }, // Store in smallest currency unit (e.g., cents)
+  sapAmount: { type: DataTypes.INTEGER, allowNull: true },   // raw SAP amount
+  mcfAmount: { type: DataTypes.INTEGER, allowNull: true },   // original MCF amount
+  confirmationToken: { type: DataTypes.STRING, allowNull: true },
   currency: { type: DataTypes.STRING(3), allowNull: false }, // e.g., '012' for DZD
   status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' }, // e.g., 'registered', 'pending', 'success', 'failed', 'refunded', 'error'
   retryCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // Renamed from 'retries' for frontend consistency
