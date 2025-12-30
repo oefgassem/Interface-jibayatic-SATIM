@@ -11,54 +11,140 @@ module.exports = function generateReceipt(payment, res) {
 
   doc.pipe(res);
 
-  // ================= HEADER =================
+  /* ================= HEADER (LOGOS ONLY) ================= */
+  const logoDGI = "/app/assets/logo-dgi.png";
+  const logoSatim = "/app/assets/logo-satim.png";
+
+  const headerTop = 40;
+  const headerHeight = 70;
+
+  try {
+    doc.image(logoDGI, 50, headerTop, { width: 70 });
+    doc.image(logoSatim, 475, headerTop, { width: 70 });
+  } catch (e) {}
+
+  // Force cursor AFTER header
+  doc.y = headerTop + headerHeight + 20;
+
+  /* ================= TITLE ================= */
   doc
     .fontSize(18)
-    .text("Reçu de paiement électronique", { align: "center" })
-    .moveDown(0.5);
+    .font("Helvetica-Bold")
+    .text("REÇU DE PAIEMENT ÉLECTRONIQUE", {
+      align: "center",
+    });
 
   doc
+    .moveDown(0.4)
     .fontSize(12)
-    .text("Direction Générale des Impôts (DGI)", { align: "center" })
-    .moveDown(2);
+    .font("Helvetica")
+    .text("Direction Générale des Impôts (DGI)", {
+      align: "center",
+    });
 
-  // ================= DATA =================
-  const ack = payment.satimAckDetails;
-  const ackAction = payment.actions.find(
-    a => a.type === "SATIM_ACK_OK"
-  );
-  const date = new Date(ackAction?.timestamp);
+  doc.moveDown(1.2);
+  drawLine(doc);
+
+  /* ================= PAYMENT INFO ================= */
+  doc
+    .moveDown(0.8)
+    .fontSize(13)
+    .font("Helvetica-Bold")
+    .text("Informations de l’opération de paiement", 70);
+
+  doc.moveDown(0.4);
+  drawLine(doc);
+  doc.moveDown(0.8);
+
+  const ack = payment.satimAckDetails || {};
+  const ackAction = payment.actions.find(a => a.type === "SATIM_ACK_OK");
+  const date = new Date(ackAction?.timestamp || payment.updatedAt);
 
   const rows = [
-    ["Transaction", "Effectuée avec succès"],
-    ["N° d’opération", ack?.OrderNumber],
+    ["Statut", "Paiement effectué avec succès"],
+    ["N° d’opération", ack?.OrderNumber || payment.satimOrderNumber],
+    ["N° Liasse fiscale", payment.orderNumber],
     ["N° Client", payment.accountId],
-    ["Date", date.toISOString().slice(0, 10)],
-    ["Heure", date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })],
-    ["Montant", `${(payment.amount / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA`],
+    [
+      "Date / Heure",
+      `${date.toLocaleDateString("fr-FR")} ${date.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`,
+    ],
+    [
+      "Montant payé",
+      `${(payment.amount / 100).toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+      })} DA`,
+    ],
+    ["Code d’autorisation", ack?.approvalCode || "-"],
     ["Identifiant transaction", payment.orderId],
-    ["Code d’autorisation", ack?.approvalCode]
   ];
+
+  const labelX = 70;
+  const valueX = 260;
 
   rows.forEach(([label, value]) => {
     doc
       .font("Helvetica-Bold")
-      .text(label, { continued: true })
+      .fontSize(11)
+      .text(label, labelX, doc.y);
+
+    doc
       .font("Helvetica")
-      .text(` : ${value}`)
-      .moveDown(0.5);
+      .text(value, valueX, doc.y - 12);
+
+    doc.moveDown(0.6);
   });
 
-  // ================= FOOTER =================
-  doc.moveDown(2);
+  doc.moveDown(0.8);
+  drawLine(doc);
+
+  /* ================= INSTITUTION INFO ================= */
+  doc
+    .moveDown(0.8)
+    .fontSize(11)
+    .font("Helvetica-Bold")
+    .text("Informations institutionnelles", 70);
+
+  doc.moveDown(0.5);
+
+  doc
+    .fontSize(10)
+    .font("Helvetica")
+    .text("Direction Générale des Impôts", 70)
+    .text("Adresse : Alger – Algérie", 70)
+    .text("Site web : https://www.mfdgi.gov.dz", 70)
+    .text("Centre de contact : 0xxx xx xx xx", 70);
+
+  /* ================= FOOTER ================= */
+  doc.y = 700; // force footer near bottom
+
   doc
     .fontSize(9)
     .fillColor("gray")
     .text(
       "Ce reçu constitue une preuve officielle de paiement électronique.\n" +
-      "En cas de réclamation, veuillez conserver ce document.",
-      { align: "center" }
+        "Aucune signature manuscrite n’est requise.\n" +
+        "Veuillez conserver ce document pour toute réclamation ultérieure.",
+      70,
+      doc.y,
+      {
+        width: 470,
+        align: "center",
+      }
     );
 
   doc.end();
 };
+
+/* ================= HELPERS ================= */
+function drawLine(doc) {
+  doc
+    .moveTo(70, doc.y)
+    .lineTo(525, doc.y)
+    .lineWidth(1)
+    .strokeColor("#999999")
+    .stroke();
+}
