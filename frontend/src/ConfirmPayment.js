@@ -1,6 +1,6 @@
-// frontend/src/ConfirmPayment.js
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import "./ConfirmPayment.css";
 
 export default function ConfirmPayment() {
   const navigate = useNavigate();
@@ -11,8 +11,29 @@ export default function ConfirmPayment() {
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
-  // Les infos viennent de Home via navigate(state)
-  const payload = location.state;
+  function getPayloadFromQuery() {
+    const params = new URLSearchParams(location.search);
+
+    const orderNumber = params.get("orderNumber");
+    const accountId   = params.get("accountId");
+    const amount      = Number(params.get("amount") || 0);
+    const returnUrl   = params.get("returnUrl");
+    const failUrl     = params.get("failUrl");
+
+    if (!orderNumber || !accountId || !returnUrl || !failUrl) {
+      return null;
+    }
+
+    return {
+      orderNumber,
+      accountId,
+      amount,
+      returnUrl,
+      failUrl
+    };
+  }
+
+  const payload = location.state || getPayloadFromQuery();
 
   useEffect(() => {
     if (!payload) {
@@ -30,7 +51,7 @@ export default function ConfirmPayment() {
         });
 
         const json = await resp.json();
-        if (!resp.ok) throw new Error(json.error || "Erreur prepare");
+        if (!resp.ok) throw new Error(json.error || "Erreur de préparation");
 
         setData(json);
       } catch (e) {
@@ -58,79 +79,88 @@ export default function ConfirmPayment() {
 
       const json = await resp.json();
       if (!json.formUrl) {
-        throw new Error(json.error || "Pas de formUrl SATIM");
+        throw new Error(json.error || "Erreur SATIM");
       }
 
-      // Redirection vers SATIM
       window.location.replace(json.formUrl);
     } catch (e) {
-      alert("Erreur: " + e.message);
+      alert("Erreur : " + e.message);
       setProcessing(false);
     }
   }
 
-  if (loading) return <p>Chargement…</p>;
-  if (error) return <p style={{ color: "red" }}>{error}</p>;
+  if (loading) return <div className="loader">Chargement…</div>;
+  if (error) return <div className="error">{error}</div>;
 
   return (
-    <div style={{ padding: 24, fontFamily: "Arial" }}>
-      <h2>Confirmation du paiement</h2>
+    <div className="payment-container">
+      <div className="payment-card">
+        <div className="payment-header">
+          <span className="icon">💳</span>
+          <h2>Confirmation du paiement</h2>
+          <p className="subtitle">
+            Veuillez vérifier les informations avant de continuer
+          </p>
+        </div>
 
-      <table
-        style={{
-          marginTop: 20,
-          borderCollapse: "collapse",
-          minWidth: 400,
-        }}
-      >
-        <tbody>
-          <tr>
-            <td style={cell}>Numéro de la liasse</td>
-            <td style={cell}>{data.orderNumber}</td>
-          </tr>
-          <tr>
-            <td style={cell}>Montant à payer</td>
-            <td style={{ ...cell, fontWeight: "bold" }}>
-              {data.amountToPay.toLocaleString('fr-FR', {
+        <div className="payment-summary">
+          <div className="row">
+            <span>Numéro de la liasse</span>
+            <strong>{data.orderNumber}</strong>
+          </div>
+          <div className="row amount">
+            <span>Montant à payer</span>
+            <strong>
+              {data.amountToPay.toLocaleString("fr-FR", {
                 minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })} {data.currency}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                maximumFractionDigits: 2,
+              })}{" "}
+              {data.currency}
+            </strong>
+          </div>
+        </div>
 
-      <div style={{ marginTop: 20 }}>
-        <h4>Logs</h4>
-        <ul>
-          <li>🧠 SAP : {data.logs.sap}</li>
-          <li>ℹ️ MCF : {data.logs.mcf}</li>
-          <li>🏛️ DGI : {data.logs.dgi}</li>
-        </ul>
-      </div>
+        <hr />
 
-      <div style={{ marginTop: 30 }}>
-        <button
-          onClick={() => navigate(-1)}
-          disabled={processing}
-          style={{ marginRight: 10 }}
-        >
-          Annuler
-        </button>
+        <div className="logs">
+          <h4>Journaux de contrôle</h4>
 
-        <button
-          onClick={proceed}
-          disabled={processing}
-          style={{ padding: "8px 20px" }}
-        >
-          {processing ? "Redirection…" : "Continuer le paiement"}
-        </button>
+          <div className="log sap">
+            <strong>SAP</strong>
+            <p>{data.logs.sap}</p>
+          </div>
+
+          <div className="log satim">
+            <strong>SATIM</strong>
+            <p>{data.logs.satim || "Paiement non encore initié"}</p>
+          </div>
+
+          <div className="log dgi">
+            <strong>DGI</strong>
+            <p>{data.logs.dgi}</p>
+          </div>
+        </div>
+
+        <hr />
+
+        <div className="actions">
+          <button
+            className="btn secondary"
+            onClick={() => navigate(-1)}
+            disabled={processing}
+          >
+            Annuler
+          </button>
+
+          <button
+            className="btn primary"
+            onClick={proceed}
+            disabled={processing}
+          >
+            {processing ? "Redirection vers SATIM…" : "Continuer le paiement"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
-const cell = {
-  border: "1px solid #ccc",
-  padding: 10,
-};

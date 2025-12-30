@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const SAP_BASE =
-  'http://172.16.201.11:8000/sap/opu/odata/sap/ZSATIM_GW_SRV/';
+  'http://172.16.201.11:8000/sap/opu/odata/sap/ZSATIM_GW_SRV';
 
 const SAP_AUTH = {
   username: process.env.SAP_USER,

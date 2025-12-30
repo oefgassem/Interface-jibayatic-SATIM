@@ -11,7 +11,7 @@ const cors = require('cors');
 const { generateSatimOrderNumber } = require('./satimOrderNumber');
 
 const satimModule = require('./satimOrderNumber');
-console.log('DEBUG satimOrderNumber module =', satimModule);
+const generateReceipt = require('./pdf/receiptGenerator');
 
 
 
@@ -258,6 +258,29 @@ app.get('/api/satim/return', async (req, res) => {
       <body>Redirecting to <a href="${redirectUrl}">result</a>...</body>
     </html>
   `);
+});
+
+// ----------- PDF RECEIPT -----------
+app.get('/api/payments/:orderId/receipt', async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const payment = await Payment.findByPk(orderId);
+
+    if (!payment) {
+      return res.status(404).send("Paiement introuvable");
+    }
+
+    if (!payment.satimAckDetails || payment.satimAckDetails.actionCode !== 0) {
+      return res.status(400).send("Paiement non validé");
+    }
+
+    return generateReceipt(payment.toJSON(), res);
+
+  } catch (err) {
+    console.error("PDF error", err);
+    return res.status(500).send("Erreur génération PDF");
+  }
 });
 
 // ----------- API to fetch all payments -----------
