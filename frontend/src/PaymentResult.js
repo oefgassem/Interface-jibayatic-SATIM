@@ -12,8 +12,8 @@ function PaymentResult() {
     <div style={{ fontFamily: "Arial", padding: 24 }}>
       <h1>
         {status === "success"
-          ? "🎉 Paiement Réussi"
-          : "❌ Paiement Échoué"}
+          ? "Paiement Réussi"
+          : "Paiement Échoué"}
       </h1>
 
       {data && (
