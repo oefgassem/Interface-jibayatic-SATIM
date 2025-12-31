@@ -53,11 +53,11 @@ app.post('/api/payment/prepare', async (req, res) => {
       });
     }
 
-    // 1️⃣ Get authoritative amount from SAP
+    // Get authoritative amount from SAP
     const { sapAmount, currency: sapCurrency } =
       await fetchPendingAmount(orderNumber);
 
-    // 2️⃣ Apply DGI rule
+    // Apply DGI rule
     const payableAmountCents = Math.round(Number(sapAmount) * 10000);
 
     if (payableAmountCents <= 0) {
@@ -72,16 +72,16 @@ app.post('/api/payment/prepare', async (req, res) => {
     
     const sapAmountCents = Math.round(Number(sapAmount) * 10000);
 
-    // 5️⃣ Persist PRECHECK payment
+    // Persist PRECHECK payment
     await Payment.create({
       orderId: confirmationToken,        // internal temporary ID
-      orderNumber,                       // 🔵 liasse fiscale (business)
-      satimOrderNumber,                  // 🔴 unique SATIM order
+      orderNumber,                       // liasse fiscale (business)
+      satimOrderNumber,                  // unique SATIM order
       accountId,
       amount: payableAmountCents,             // amount to be paid
       sapAmount: sapAmountCents,      // raw SAP amount
       mcfAmount: amount || null,         // original MCF amount (audit)
-      currency: 'DZD',           // 🔴 numeric currency (012)
+      currency: 'DZD',
       status: 'pending',
       confirmationToken,
       actions: [
@@ -100,10 +100,10 @@ app.post('/api/payment/prepare', async (req, res) => {
       ]
     });
 
-    // 6️⃣ Respond to frontend (confirmation screen)
+    // Respond to frontend (confirmation screen)
     return res.json({
       orderNumber,              // liasse (display only)
-      satimOrderNumber,         // optional (debug / admin)
+      satimOrderNumber, 
       accountId,
       amountToPay: payableAmountCents / 100,
       currency: 'DZD',
@@ -142,7 +142,7 @@ app.post('/api/satim/register', async (req, res) => {
       }
 
       orderNumber = payment.satimOrderNumber;
-      amount = payment.amount;        // ✅ AMOUNT FROM SAP (already /10)
+      amount = payment.amount;        // AMOUNT FROM SAP (already /100)
       accountId = payment.accountId;
       currency = '012';
 

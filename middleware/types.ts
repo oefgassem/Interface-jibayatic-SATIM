@@ -13,15 +13,13 @@ export enum PaymentStatus {
 export interface SatimPayload {
   pan: string;
   approvalCode: string;
-  transactionDate: string; // Or Date type if parsed
-  // Add other fields from SATIM ACK response as needed
+  transactionDate: string;
 }
 
 export interface SapResponse {
   sapDocumentId?: string;
   message: string;
   fiscalYear?: string;
-  // Add other SAP response fields
 }
 
 export interface Payment {

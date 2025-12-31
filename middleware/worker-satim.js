@@ -27,7 +27,7 @@ new Worker(
   async job => {
     const { orderId } = job.data;
 
-    // 1️⃣ Call SATIM acknowledgeTransaction
+    // Call SATIM acknowledgeTransaction
     const params = new URLSearchParams({
       userName: SATIM_USERNAME,
       password: SATIM_PASSWORD,
@@ -41,13 +41,13 @@ new Worker(
 
     const data = resp.data;
 
-    // 2️⃣ Load payment from DB
+    // Load payment from DB
     const payment = await Payment.findByPk(orderId);
     if (!payment) {
       throw new Error(`Payment ${orderId} not found`);
     }
 
-    // 3️⃣ Robust SATIM success detection
+    // Robust SATIM success detection
     const isSuccess =
       data?.params?.respCode === '00' ||
       data?.actionCode === 0 ||
@@ -56,7 +56,7 @@ new Worker(
       data?.OrderStatus === 2;
 
     if (isSuccess) {
-      // ✅ Payment confirmed by SATIM
+      // Payment confirmed by SATIM
       await payment.update({
         status: 'paid',
         satimAckDetails: data,
@@ -71,11 +71,11 @@ new Worker(
         ]
       });
 
-      // 4️⃣ Enqueue SAP posting
+      // Enqueue SAP posting
       await sapQueue.add('post-to-sap', { orderId });
 
     } else {
-      // ❌ SATIM reported payment failure
+      // SATIM reported payment failure
       await payment.update({
         status: 'error',
         satimAckDetails: data,
