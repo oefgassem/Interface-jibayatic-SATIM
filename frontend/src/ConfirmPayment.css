@@ -1,141 +1,176 @@
-.payment-container {
+/* ===== Page ===== */
+.fiori-page {
   min-height: 100vh;
-  background: #f4f6f8;
+  background: #f7f7f7;
+  font-family: "Segoe UI", Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Header ===== */
+.fiori-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 16px 24px;
+}
+
+.fiori-title {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-family: "Segoe UI", Arial, sans-serif;
+  gap: 14px;
 }
 
-.payment-card {
+.fiori-icon {
+  font-size: 32px;
+}
+
+.fiori-title h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.fiori-title p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: #666;
+}
+
+/* ===== Content ===== */
+.fiori-content {
+  flex: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* ===== Sections ===== */
+.fiori-section {
   background: #ffffff;
-  width: 520px;
-  padding: 28px;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
 }
 
-.payment-header {
-  text-align: center;
+.fiori-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 14px;
 }
 
-.payment-header .icon {
-  font-size: 36px;
+/* ===== SimpleForm ===== */
+.fiori-form {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  row-gap: 12px;
 }
 
-.payment-header h2 {
-  margin: 10px 0 4px;
+.fiori-form-row {
+  display: contents;
 }
 
-.subtitle {
+.fiori-form-row label {
   color: #666;
   font-size: 14px;
 }
 
-.payment-summary {
-  margin-top: 20px;
-}
-
-.payment-summary .row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  font-size: 15px;
-}
-
-.payment-summary .amount {
-  font-size: 17px;
-  font-weight: bold;
-}
-
-hr {
-  border: none;
-  border-top: 1px solid #e0e0e0;
-  margin: 20px 0;
-}
-
-.logs h4 {
-  margin-bottom: 10px;
-}
-
-.log {
-  padding: 10px 12px;
-  border-radius: 4px;
-  margin-bottom: 8px;
+.fiori-form-row span {
   font-size: 14px;
 }
 
-.log.sap {
-  background: #e3f2fd;
-  border-left: 4px solid #1976d2;
+/* ===== MessageStrip ===== */
+.message-strip {
+  padding: 10px 12px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 
-.log.satim {
-  background: #f3e5f5;
-  border-left: 4px solid #7b1fa2;
+.message-strip.info {
+  background: #eaf3fc;
+  border-left: 4px solid #0a6ed1;
 }
 
-.log.dgi {
-  background: #e8f5e9;
-  border-left: 4px solid #2e7d32;
+.message-strip.warning {
+  background: #fff4e5;
+  border-left: 4px solid #e9730c;
 }
 
-.actions {
+.message-strip.success {
+  background: #edf7ed;
+  border-left: 4px solid #107e3e;
+}
+
+/* ===== Compliance ===== */
+.fiori-compliance {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fiori-checkbox {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.fiori-checkbox a {
+  color: #0a6ed1;
+  text-decoration: underline;
+}
+
+/* ===== Footer Bar ===== */
+.fiori-footer {
+  background: #ffffff;
+  border-top: 1px solid #e5e5e5;
+  padding: 12px 24px;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
 }
 
+/* ===== Buttons ===== */
 .btn {
-  padding: 10px 18px;
-  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 3px;
   border: none;
   cursor: pointer;
-  font-size: 14px;
 }
 
 .btn.primary {
-  background: #1976d2;
-  color: #fff;
+  background: #0a6ed1;
+  color: #ffffff;
 }
 
 .btn.primary:disabled {
-  background: #90caf9;
+  background: #aac9ea;
 }
 
 .btn.secondary {
-  background: #e0e0e0;
+  background: #e5e5e5;
 }
 
-.loader,
-.error {
-  padding: 40px;
-  text-align: center;
+.fiori-form-row.emphasis span {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0a6ed1; /* SAP primary */
 }
 
-.error-log {
-  background: #ffebee;
-  border-left: 4px solid #c62828;
-}
-
-.compliance {
-  margin: 15px 0;
-  font-size: 14px;
-}
-
-.checkbox {
+.cib-btn {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
-  cursor: pointer;
+  align-items: center;
+  gap: 8px;
 }
 
-.checkbox input {
-  margin-top: 3px;
+.cib-btn img {
+  height: 18px;
 }
 
-.checkbox a {
-  color: #0b5ed7;
-  text-decoration: underline;
+.payment-hint {
+  font-size: 12px;
+  color: #6a6d70;     /* SAP secondary text */
+  margin-right: auto;
+  align-self: center;
 }

@@ -125,101 +125,110 @@ export default function ConfirmPayment() {
      Render
      ========================= */
   return (
-    <div className="payment-container">
-      <div className="payment-card">
-        <div className="payment-header">
-          <span className="icon">💳</span>
-          <h2>Confirmation du paiement</h2>
-          <p className="subtitle">
-            Veuillez vérifier les informations avant de continuer
-          </p>
-        </div>
-
-        <div className="payment-summary">
-          <div className="row">
-            <span>Numéro de la liasse</span>
-            <strong>{data.orderNumber}</strong>
-          </div>
-
-          <div className="row amount">
-            <span>Montant à payer</span>
-            <strong>
-              {data.amountToPay.toLocaleString("fr-FR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{" "}
-              {data.currency}
-            </strong>
+    <div className="fiori-page">
+      <div className="fiori-header">
+        <div className="fiori-title">
+          <span className="fiori-icon">💳</span>
+          <div>
+            <h1>Confirmation du paiement</h1>
+            <p>Veuillez vérifier les informations avant de continuer</p>
           </div>
         </div>
+      </div>
 
-        <hr />
+      <div className="fiori-content">
+        {/* ===== Payment Information ===== */}
+        <section className="fiori-section">
+          <h2 className="fiori-section-title">Informations de paiement</h2>
 
-        <div className="logs">
-          <h4>Journaux de contrôle</h4>
+          <div className="fiori-form">
+            <div className="fiori-form-row">
+              <label>Numéro de la liasse</label>
+              <span>{data.orderNumber}</span>
+            </div>
 
-          <div className="log sap">
-            <strong>SAP</strong>
-            <p>{data.logs.sap}</p>
+            <div className="fiori-form-row emphasis">
+              <label>Montant final à payer</label>
+              <span>
+                {data.amountToPay.toLocaleString("fr-FR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {data.currency}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* ===== Logs ===== */}
+        {/* <section className="fiori-section">
+          <h2 className="fiori-section-title">Contrôles système</h2>
+
+          <div className="message-strip info">
+            <strong>SAP :</strong> {data.logs.sap}
           </div>
 
-          <div className="log satim">
-            <strong>SATIM</strong>
-            <p>{data.logs.satim || "Paiement non encore initié"}</p>
+          <div className="message-strip warning">
+            <strong>SATIM :</strong>{" "}
+            {data.logs.satim || "Paiement non encore initié"}
           </div>
 
-          <div className="log dgi">
-            <strong>DGI</strong>
-            <p>{data.logs.dgi}</p>
+          <div className="message-strip success">
+            <strong>DGI :</strong> {data.logs.dgi}
           </div>
-        </div>
+        </section> */}
 
-        <hr />
+        {/* ===== Compliance ===== */}
+        <section className="fiori-section">
+          <h2 className="fiori-section-title">Validation</h2>
 
-        {/* ================= CAPTCHA + TERMS ================= */}
-        <div className="compliance">
-          <ReCAPTCHA
-            sitekey="6LczCj4sAAAAAPrIdzoiqt--N3PU3-cX1gjJmF_Q"
-            onChange={(token) => setCaptchaToken(token)}
-          />
-
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
+          <div className="fiori-compliance">
+            <ReCAPTCHA
+              sitekey="6LczCj4sAAAAAPrIdzoiqt--N3PU3-cX1gjJmF_Q"
+              onChange={(token) => setCaptchaToken(token)}
             />
-            <span>
-              J’accepte les{" "}
-              <a
-                href="/epayment/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                conditions générales d’utilisation
-              </a>
-            </span>
-          </label>
-        </div>
 
-        {/* ================= ACTIONS ================= */}
-        <div className="actions">
-          <button
-            className="btn secondary"
-            onClick={() => navigate(-1)}
-            disabled={processing}
-          >
-            Annuler
-          </button>
+            <label className="fiori-checkbox">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+              />
+              <span>
+                J’ai pris connaissance et j’accepte les{" "}
+                <a href="/epayment/terms" target="_blank" rel="noreferrer">
+                  conditions générales du paiement en ligne
+                </a>
+              </span>
+            </label>
+          </div>
+        </section>
+      </div>
 
-          <button
-            className="btn primary"
-            onClick={proceed}
-            disabled={processing || !captchaToken || !termsAccepted}
-          >
-            {processing ? "Redirection vers SATIM…" : "Continuer le paiement"}
-          </button>
+      {/* ===== Footer Bar ===== */}
+      <div className="fiori-footer">
+        <div className="payment-hint">
+          Vous serez redirigé vers la plateforme sécurisée de paiement SATIM.
         </div>
+        <button
+          className="btn secondary"
+          onClick={() => navigate(-1)}
+          disabled={processing}
+        >
+          Annuler
+        </button>
+
+        <button
+          className="btn primary cib-btn"
+          onClick={proceed}
+          disabled={processing || !captchaToken || !termsAccepted}
+        >
+          <img
+            src={`${process.env.PUBLIC_URL}/assets/cib-logo.png`}
+            alt="CIB"
+          />
+          Procéder au paiement
+        </button>
       </div>
     </div>
   );
