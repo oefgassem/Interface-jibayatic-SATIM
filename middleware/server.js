@@ -41,6 +41,35 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8081';
 
 const { fetchPendingAmount } = require('./sapPendingClient');
 
+// ----------- CAPTCHA VERIFICATION -----------
+async function verifyCaptcha(token, ip) {
+  try {
+    const secret = process.env.RECAPTCHA_SECRET;
+    if (!secret) {
+      console.error("RECAPTCHA_SECRET not configured");
+      return false;
+    }
+
+    const response = await axios.post(
+      "https://www.google.com/recaptcha/api/siteverify",
+      null,
+      {
+        params: {
+          secret,
+          response: token,
+          remoteip: ip
+        },
+        timeout: 5000
+      }
+    );
+
+    return response.data && response.data.success === true;
+  } catch (err) {
+    console.error("CAPTCHA verification error", err.message);
+    return false;
+  }
+}
+
 // ----------- SATIM PREPARE PAYMENT -----------
 
 app.post('/api/payment/prepare', async (req, res) => {
@@ -127,7 +156,24 @@ app.post('/api/payment/prepare', async (req, res) => {
 app.post('/api/satim/register', async (req, res) => {
   try {
     let orderNumber, amount, accountId, currency = '012';
-    const { language = 'FR', returnUrl, failUrl, confirmationToken } = req.body;
+    const { language = 'FR', returnUrl, failUrl, confirmationToken, captchaToken } = req.body;
+
+    // -------------------------------
+    // CAPTCHA CHECK (MANDATORY)
+    // -------------------------------
+    if (!captchaToken) {
+      return res.status(400).json({ error: 'CAPTCHA manquant' });
+    }
+
+    const clientIp =
+      req.headers['x-forwarded-for']?.split(',')[0] ||
+      req.socket.remoteAddress;
+
+    const captchaValid = await verifyCaptcha(captchaToken, clientIp);
+
+    if (!captchaValid) {
+      return res.status(403).json({ error: 'CAPTCHA invalide' });
+    }
 
     // -------------------------------
     // CASE 1: NEW FLOW (FROM PREPARE)
@@ -228,7 +274,14 @@ app.post('/api/satim/register', async (req, res) => {
         actions: [{
           timestamp: new Date().toISOString(),
           type: 'SATIM_REGISTERED',
-          details: { satimResponse: data }
+          details: {
+            satimResponse: data,
+            captcha: {
+              verified: true,
+              ip: clientIp,
+              timestamp: new Date().toISOString()
+            }
+          }
         }]
       });
     }

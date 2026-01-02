@@ -117,3 +117,25 @@ hr {
   background: #ffebee;
   border-left: 4px solid #c62828;
 }
+
+.compliance {
+  margin: 15px 0;
+  font-size: 14px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.checkbox input {
+  margin-top: 3px;
+}
+
+.checkbox a {
+  color: #0b5ed7;
+  text-decoration: underline;
+}

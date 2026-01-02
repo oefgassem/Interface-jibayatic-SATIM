@@ -25,8 +25,8 @@ export default function Home() {
           orderNumber,
           amount: 0, // ignoré côté middleware
           accountId,
-          returnUrl: "http://qas.local.test/middleware/api/satim/return",
-          failUrl: "http://qas.local.test/middleware/api/satim/return",
+          returnUrl: "http://qas.local.test/epayment/api/satim/return",
+          failUrl: "http://qas.local.test/epayment/api/satim/return",
         },
       });
     } finally {

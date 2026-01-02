@@ -6,4 +6,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "qas.jibayatec.dgi.gov.dz:172.16.201.13"
+      - "dgidevmt2.dgi.gov.dz:172.16.201.13"
+      - "qas.mw.jibayatec.dgi.gov.dz:172.16.205.52"
     restart: unless-stopped

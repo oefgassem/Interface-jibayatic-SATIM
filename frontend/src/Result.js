@@ -20,7 +20,7 @@ export default function Result() {
 
     const interval = setInterval(async () => {
       try {
-        const resp = await fetch(`/middleware/api/payments/${orderId}`);
+        const resp = await fetch(`/epayment/api/payments/${orderId}`);
         if (!resp.ok) throw new Error("Erreur serveur");
 
         const json = await resp.json();
@@ -145,7 +145,7 @@ export default function Result() {
               className="btn primary"
               onClick={() =>
                 window.open(
-                  `/middleware/api/payments/${payment.orderId}/receipt`,
+                  `/epayment/api/payments/${payment.orderId}/receipt`,
                   "_blank"
                 )
               }
@@ -160,8 +160,8 @@ export default function Result() {
                   state: {
                     orderNumber: payment.orderNumber,
                     accountId: payment.accountId,
-                    returnUrl: "http://qas.local.test/middleware/api/satim/return",
-                    failUrl: "http://qas.local.test/middleware/api/satim/return"
+                    returnUrl: "http://qas.local.test/epayment/api/satim/return",
+                    failUrl: "http://qas.local.test/epayment/api/satim/return"
                   }
                 });
               }}

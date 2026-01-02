@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import ReCAPTCHA from "react-google-recaptcha";
 import "./ConfirmPayment.css";
 
 export default function ConfirmPayment() {
@@ -11,14 +12,20 @@ export default function ConfirmPayment() {
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState(null);
+
+  /* =========================
+     Extract payload
+     ========================= */
   function getPayloadFromQuery() {
     const params = new URLSearchParams(location.search);
 
     const orderNumber = params.get("orderNumber");
-    const accountId   = params.get("accountId");
-    const amount      = Number(params.get("amount") || 0);
-    const returnUrl   = params.get("returnUrl");
-    const failUrl     = params.get("failUrl");
+    const accountId = params.get("accountId");
+    const amount = Number(params.get("amount") || 0);
+    const returnUrl = params.get("returnUrl");
+    const failUrl = params.get("failUrl");
 
     if (!orderNumber || !accountId || !returnUrl || !failUrl) {
       return null;
@@ -29,12 +36,15 @@ export default function ConfirmPayment() {
       accountId,
       amount,
       returnUrl,
-      failUrl
+      failUrl,
     };
   }
 
   const payload = location.state || getPayloadFromQuery();
 
+  /* =========================
+     Prepare payment
+     ========================= */
   useEffect(() => {
     if (!payload) {
       setError("Aucune donnée de paiement fournie");
@@ -44,7 +54,7 @@ export default function ConfirmPayment() {
 
     async function prepare() {
       try {
-        const resp = await fetch("/middleware/api/payment/prepare", {
+        const resp = await fetch("/epayment/api/payment/prepare", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -64,14 +74,29 @@ export default function ConfirmPayment() {
     prepare();
   }, [payload]);
 
+  /* =========================
+     Proceed to SATIM
+     ========================= */
   async function proceed() {
+    if (!captchaToken) {
+      alert("Veuillez valider le CAPTCHA.");
+      return;
+    }
+
+    if (!termsAccepted) {
+      alert("Veuillez accepter les conditions générales.");
+      return;
+    }
+
     setProcessing(true);
+
     try {
-      const resp = await fetch("/middleware/api/satim/register", {
+      const resp = await fetch("/epayment/api/satim/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           confirmationToken: data.confirmationToken,
+          captchaToken,
           returnUrl: data.returnUrl,
           failUrl: data.failUrl,
         }),
@@ -82,6 +107,7 @@ export default function ConfirmPayment() {
         throw new Error(json.error || "Erreur SATIM");
       }
 
+      // Redirect to SATIM
       window.location.replace(json.formUrl);
     } catch (e) {
       alert("Erreur : " + e.message);
@@ -89,9 +115,15 @@ export default function ConfirmPayment() {
     }
   }
 
+  /* =========================
+     UI States
+     ========================= */
   if (loading) return <div className="loader">Chargement…</div>;
   if (error) return <div className="error">{error}</div>;
 
+  /* =========================
+     Render
+     ========================= */
   return (
     <div className="payment-container">
       <div className="payment-card">
@@ -108,6 +140,7 @@ export default function ConfirmPayment() {
             <span>Numéro de la liasse</span>
             <strong>{data.orderNumber}</strong>
           </div>
+
           <div className="row amount">
             <span>Montant à payer</span>
             <strong>
@@ -143,6 +176,33 @@ export default function ConfirmPayment() {
 
         <hr />
 
+        {/* ================= CAPTCHA + TERMS ================= */}
+        <div className="compliance">
+          <ReCAPTCHA
+            sitekey="6LczCj4sAAAAAPrIdzoiqt--N3PU3-cX1gjJmF_Q"
+            onChange={(token) => setCaptchaToken(token)}
+          />
+
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+            />
+            <span>
+              J’accepte les{" "}
+              <a
+                href="/epayment/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                conditions générales d’utilisation
+              </a>
+            </span>
+          </label>
+        </div>
+
+        {/* ================= ACTIONS ================= */}
         <div className="actions">
           <button
             className="btn secondary"
@@ -155,7 +215,7 @@ export default function ConfirmPayment() {
           <button
             className="btn primary"
             onClick={proceed}
-            disabled={processing}
+            disabled={processing || !captchaToken || !termsAccepted}
           >
             {processing ? "Redirection vers SATIM…" : "Continuer le paiement"}
           </button>
