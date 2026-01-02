@@ -57,9 +57,9 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=payments
-      - SAP_USER=OGACEM
-      - SAP_PASSWORD=BlueBanana@2025
-      - RECAPTCHA_SECRET=6LczCj4sAAAAANmo0nk9bdgFkk5Wuyhig-A99E5t
+      - SAP_USER=${SAP_USER}
+      - SAP_PASSWORD=${SAP_PASSWORD}
+      - RECAPTCHA_SECRET=${RECAPTCHA_SECRET}
     labels:
       - "traefik.enable=true"
       # - "traefik.http.routers.api.rule=(Host(`middleware.docker.localhost`) || Host(`localhost`)) && PathPrefix(`/api`)"
@@ -108,8 +108,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=payments
-      - SAP_USER=OGACEM
-      - SAP_PASSWORD=BlueBanana@2025
+      - SAP_USER=${SAP_USER}
+      - SAP_PASSWORD=${SAP_PASSWORD}
     depends_on:
       - redis
       - db
