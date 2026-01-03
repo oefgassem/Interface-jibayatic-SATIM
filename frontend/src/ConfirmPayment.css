@@ -174,3 +174,31 @@
   margin-right: auto;
   align-self: center;
 }
+
+/* ===== SATIM Assistance ===== */
+.satim-assistance {
+  text-align: center;
+}
+
+.satim-assistance img {
+  height: 48px;
+  margin-bottom: 8px;
+}
+
+.satim-assistance p {
+  font-size: 13px;
+  color: #6a6d70;
+  margin: 4px 0;
+}
+
+.satim-phone {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0a6ed1;
+}
+
+/* ===== DGI Logo in Header ===== */
+.fiori-logo {
+  height: 36px;
+  width: auto;
+}
