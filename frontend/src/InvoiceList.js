@@ -13,14 +13,6 @@ const MOCK_INVOICES = [
     status: "UNPAID",
   },
   {
-    documentNumber: "INV-2025-0002",
-    documentDate: "2025-01-02",
-    dueDate: "2025-01-20",
-    amountOutstanding: 0,
-    currency: "DZD",
-    status: "PAID",
-  },
-  {
     documentNumber: "INV-2024-0987",
     documentDate: "2024-12-15",
     dueDate: "2024-12-31",
@@ -28,35 +20,48 @@ const MOCK_INVOICES = [
     currency: "DZD",
     status: "UNPAID",
   },
+  {
+    documentNumber: "INV-2025-0002",
+    documentDate: "2025-01-02",
+    dueDate: "2025-01-20",
+    amountOutstanding: 0,
+    currency: "DZD",
+    status: "PAID",
+  },
 ];
 
 export default function InvoiceList() {
   const navigate = useNavigate();
 
-  const [filters, setFilters] = useState({
-    documentNumber: "",
-    status: "UNPAID", // default view
-  });
-
-  const invoices = MOCK_INVOICES.filter((inv) => {
-    if (filters.status && inv.status !== filters.status) return false;
-    if (
-      filters.documentNumber &&
-      !inv.documentNumber.includes(filters.documentNumber)
-    )
-      return false;
-    return true;
-  });
-
-  function proceedToPayment(inv) {
-    navigate(
-      `/epayment/confirm?orderNumber=${inv.documentNumber}&amount=${inv.amountOutstanding}`
-    );
-  }
-
+  const [statusFilter, setStatusFilter] = useState("UNPAID");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [page, setPage] = useState(1);
+  const pageSize = 5;
   function printReceipt(inv) {
-    alert(`Impression du reçu : ${inv.documentNumber}`);
-  }
+    window.open(
+        `/epayment/api/receipt/${inv.documentNumber}`,
+        "_blank"
+    );
+    }
+
+  /* ===== Filtering ===== */
+  let invoices = MOCK_INVOICES.filter(
+    (i) => i.status === statusFilter
+  );
+
+  /* ===== Sorting ===== */
+  invoices.sort((a, b) =>
+    sortAsc
+      ? a.documentDate.localeCompare(b.documentDate)
+      : b.documentDate.localeCompare(a.documentDate)
+  );
+
+  /* ===== Pagination ===== */
+  const totalPages = Math.ceil(invoices.length / pageSize);
+  const pagedInvoices = invoices.slice(
+    (page - 1) * pageSize,
+    page * pageSize
+  );
 
   return (
     <div className="fiori-page list-page">
@@ -75,37 +80,41 @@ export default function InvoiceList() {
         </div>
       </div>
 
-      {/* ===== Content ===== */}
       <div className="fiori-content">
-        {/* ===== Filters ===== */}
+        {/* ===== Filter Bar ===== */}
         <section className="fiori-section fiori-filter-bar">
-            <div className="fiori-filter-row">
-                <input
-                type="text"
-                placeholder="Numéro de document"
-                value={filters.documentNumber}
-                onChange={(e) =>
-                    setFilters({ ...filters, documentNumber: e.target.value })
-                }
-                />
+          <div className="fiori-filter-row">
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="UNPAID">
+                Non payées ({MOCK_INVOICES.filter(i => i.status === "UNPAID").length})
+              </option>
+              <option value="PAID">
+                Payées ({MOCK_INVOICES.filter(i => i.status === "PAID").length})
+              </option>
+            </select>
 
-                <select
-                value={filters.status}
-                onChange={(e) =>
-                    setFilters({ ...filters, status: e.target.value })
-                }
-                >
-                <option value="UNPAID">Non payées</option>
-                <option value="PAID">Payées</option>
-                </select>
-
-                <button className="btn primary">Go</button>
-            </div>
-            </section>
+            <button
+              className="btn secondary"
+              onClick={() => setSortAsc(!sortAsc)}
+            >
+              Trier par date {sortAsc ? "↑" : "↓"}
+            </button>
+          </div>
+        </section>
 
         {/* ===== Table ===== */}
         <section className="fiori-section">
-          <h2 className="fiori-section-title">Liste des factures</h2>
+          <div className="fiori-table-toolbar">
+            <span className="fiori-table-title">
+              Liste des factures ({invoices.length})
+            </span>
+          </div>
 
           <table className="fiori-table">
             <thead>
@@ -119,7 +128,7 @@ export default function InvoiceList() {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
+              {pagedInvoices.map((inv) => (
                 <tr key={inv.documentNumber}>
                   <td>{inv.documentNumber}</td>
                   <td>{inv.documentDate}</td>
@@ -138,26 +147,55 @@ export default function InvoiceList() {
                     </span>
                   </td>
                   <td>
-                    {inv.status === "PAID" ? (
-                      <button
+                    {inv.status === "UNPAID" && (
+                        <button
+                        className="btn primary"
+                        onClick={() =>
+                            navigate(
+                            `/confirm?orderNumber=${inv.documentNumber}&amount=${inv.amountOutstanding}`
+                            )
+                        }
+                        >
+                        Payer
+                        </button>
+                    )}
+
+                    {inv.status === "PAID" && (
+                        <button
                         className="btn secondary"
                         onClick={() => printReceipt(inv)}
-                      >
-                        Imprimer reçu
-                      </button>
-                    ) : (
-                      <button
-                        className="btn primary"
-                        onClick={() => proceedToPayment(inv)}
-                      >
-                        Payer
-                      </button>
+                        >
+                        Imprimer le reçu
+                        </button>
                     )}
-                  </td>
+                    </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          {/* ===== Pagination ===== */}
+          <div className="fiori-pagination">
+            <button
+              className="btn secondary"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+            >
+              Précédent
+            </button>
+
+            <span>
+              Page {page} / {totalPages}
+            </span>
+
+            <button
+              className="btn secondary"
+              disabled={page === totalPages}
+              onClick={() => setPage(page + 1)}
+            >
+              Suivant
+            </button>
+          </div>
         </section>
       </div>
     </div>
