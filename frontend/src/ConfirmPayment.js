@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
-import "./ConfirmPayment.css";
+import "./FioriTheme.css";
 
 export default function ConfirmPayment() {
   const navigate = useNavigate();

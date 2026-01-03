@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import "./ConfirmPayment.css"; // on réutilise le même CSS
+import "./FioriTheme.css"; // on réutilise le même CSS
 
 const JIBAYATEK_URL = "http://qas.local.test/mondossier/";
 
