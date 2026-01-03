@@ -128,14 +128,16 @@ export default function ConfirmPayment() {
     <div className="fiori-page">
       <div className="fiori-header">
         <div className="fiori-title">
-          <span className="fiori-icon">💳</span>
+          <img
+            src={`${process.env.PUBLIC_URL}/assets/dgi-logo.png`}
+            alt="DGI"
+            className="fiori-logo"
+          />
           <div>
-            <img
-              src={`${process.env.PUBLIC_URL}/assets/dgi-logo.png`}
-              alt="DGI"
-              className="fiori-logo"
-            />
-            <p>Veuillez vérifier les informations avant de continuer</p>
+            <h1>Confirmation de paiement</h1>
+            <p>
+              Veuillez vérifier les informations avant de continuer
+            </p>
           </div>
         </div>
       </div>
