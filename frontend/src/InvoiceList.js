@@ -65,24 +65,9 @@ export default function InvoiceList() {
 
   return (
     <div className="fiori-page list-page">
-      {/* ===== Header ===== */}
-      <div className="fiori-header">
-        <div className="fiori-title">
-          <img
-            src={`${process.env.PUBLIC_URL}/assets/dgi-logo.png`}
-            alt="DGI"
-            className="fiori-logo"
-          />
-          <div>
-            <h1>Mes factures</h1>
-            <p>Consultation et paiement en ligne</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="fiori-content">
+      <div className="fiori-content fiori-list-report">
         {/* ===== Filter Bar ===== */}
-        <section className="fiori-section fiori-filter-bar">
+        <section className="fiori-filterbar">
           <div className="fiori-filter-row">
             <select
               value={statusFilter}

@@ -6,18 +6,23 @@ import Result from "./Result";
 import PaymentResult from "./PaymentResult";
 import ConfirmPayment from "./ConfirmPayment";
 import InvoiceList from "./InvoiceList";
+import FioriLayout from "./FioriLayout";
+
 
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
-      {/* Invoice list (standalone test page) */}
-      <Route path="/invoices" element={<InvoiceList />} />
-      <Route path="/confirm" element={<ConfirmPayment />} />
-      {/* route principale basée sur orderId + polling */}
-      <Route path="/result" element={<Result />} />
-      {/* route alternative pour afficher directement un résultat passé via navigate(state) */}
-      <Route path="/result-state" element={<PaymentResult />} />
+      {/* Fiori Shell */}
+      <Route element={<FioriLayout />}>
+        <Route path="/" element={<Home />} />
+        {/* Invoice list (standalone test page) */}
+        <Route path="/invoices" element={<InvoiceList />} />
+        <Route path="/confirm" element={<ConfirmPayment />} />
+        {/* route principale basée sur orderId + polling */}
+        <Route path="/result" element={<Result />} />
+        {/* route alternative pour afficher directement un résultat passé via navigate(state) */}
+        <Route path="/result-state" element={<PaymentResult />} />
+      </Route>
     </Routes>
   );
 }

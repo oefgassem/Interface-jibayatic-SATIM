@@ -292,12 +292,11 @@
 
 /* ===== Fiori Table ===== */
 .fiori-table-toolbar {
-  display: flex;
-  align-items: center;
   height: 48px;
   padding: 0 16px;
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid #e5e5e5;
-  background: #ffffff;
 }
 
 .fiori-table-title {
@@ -383,4 +382,149 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
+}
+
+/* ============================= */
+/* FIORI SHELL (Top + Side Nav) */
+/* ============================= */
+
+.fiori-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+/* ===== Top Bar ===== */
+.fiori-topbar {
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+
+  background: #eaf3fc; /* Quartz light blue */
+  color: #1a2733;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 16px;
+  border-bottom: 1px solid #d1e4f5;
+  box-sizing: border-box;
+}
+
+/* Left part */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sap-logo {
+  height: 22px;
+}
+
+.topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a2733;
+}
+
+/* Right part (user) */
+.topbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+
+  background: #ffffff;
+  border: 1px solid #c2d8ee;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 14px;
+  color: #0a6ed1;
+  cursor: pointer;
+}
+
+/* ===== Main ===== */
+.fiori-main {
+  flex: 1;
+  display: flex;
+  background: #f7f7f7;
+}
+
+/* ===== Side Navigation ===== */
+.fiori-main {
+  flex: 1;
+  display: flex;
+  background: #f7f7f7;
+}
+
+.fiori-sidenav {
+  width: 240px;
+  background: #ffffff;
+  border-right: 1px solid #e5e5e5;
+  padding-top: 8px;
+  box-sizing: border-box;
+}
+
+/* Nav items */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 16px;
+
+  font-size: 14px;
+  font-weight: 400;
+  color: #1a2733;
+
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: #eef4fc;
+  color: #0a6ed1;
+}
+
+/* Active item */
+.nav-item.active {
+  background: #eaf3fc;
+  color: #0a6ed1;
+  font-weight: 600;
+}
+
+/* Icon (outline style) */
+.nav-icon {
+  font-size: 16px;
+  color: inherit;
+}
+
+/* ===== Content Area ===== */
+.fiori-content-area {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.fiori-list-report {
+  padding: 0;
+  background: #ffffff;
+}
+
+/* ===== Filter Bar ===== */
+.fiori-filterbar {
+  padding: 8px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #f7f7f7;
+  display: flex;
+  gap: 12px;
 }
